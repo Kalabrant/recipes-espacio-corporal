@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es-VE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Récipes — Espacio Corporal</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+<header class="barra">
+  <div class="marca">
+    <span class="marca-nombre">Récipes</span>
+    <span class="marca-sub">Espacio Corporal</span>
+  </div>
+  <nav class="pestanas" role="tablist" aria-label="Secciones">
+    <button type="button" class="pestana activa" role="tab" id="tab-nuevo"
+            aria-selected="true" aria-controls="panel-nuevo" data-panel="panel-nuevo">Nuevo récipe</button>
+    <button type="button" class="pestana" role="tab" id="tab-historial"
+            aria-selected="false" aria-controls="panel-historial" data-panel="panel-historial">Historial</button>
+    <button type="button" class="pestana" role="tab" id="tab-config"
+            aria-selected="false" aria-controls="panel-config" data-panel="panel-config">Configuración</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ══════════ PANEL A · NUEVO RÉCIPE ══════════ -->
+  <section class="panel" id="panel-nuevo" role="tabpanel" aria-labelledby="tab-nuevo">
+
+    <div class="trabajo">
+
+      <!-- ── Columna izquierda: el formulario ── -->
+      <div class="columna-form" id="columna-form">
+
+        <div class="exito" id="exito" role="status" hidden>
+          <p class="exito-codigo" id="exito-codigo">EC-0000-0000</p>
+          <p class="exito-texto" id="exito-texto">Récipe guardado. Se abrió para imprimir.</p>
+          <button type="button" class="boton-secundario" id="btn-cerrar-exito">Entendido</button>
+        </div>
+
+        <div class="error-global" id="error-global" role="alert" hidden></div>
+
+        <!-- Paciente -->
+        <fieldset class="bloque">
+          <legend class="bloque-titulo">Paciente</legend>
+
+          <div class="fila fila-paciente">
+            <div class="campo campo-ancho">
+              <label for="pac-nombre">Nombre y apellido</label>
+              <div class="caja-sugerible">
+                <input type="text" id="pac-nombre" class="entrada" autocomplete="off"
+                       spellcheck="false" role="combobox" aria-expanded="false"
+                       aria-autocomplete="list" aria-controls="lista-pac-nombre"
+                       placeholder="Escribí el nombre">
+                <ul class="sugerencias" id="lista-pac-nombre" role="listbox" hidden></ul>
+              </div>
+              <p class="hint">Si el paciente no existe, se crea con lo que escribas.</p>
+            </div>
+
+            <div class="campo campo-cedula">
+              <label for="pac-cedula">Cédula</label>
+              <input type="text" id="pac-cedula" class="entrada" autocomplete="off"
+                     spellcheck="false" placeholder="Puede quedar vacía">
+            </div>
+
+            <div class="campo campo-edad">
+              <label for="pac-edad">Edad</label>
+              <input type="text" id="pac-edad" class="entrada" autocomplete="off"
+                     spellcheck="false" placeholder="Años">
+            </div>
+          </div>
+
+          <p class="hint hint-paciente" id="hint-paciente" hidden></p>
+        </fieldset>
+
+        <!-- Diagnóstico -->
+        <fieldset class="bloque">
+          <legend class="bloque-titulo">Diagnóstico</legend>
+          <div class="campo">
+            <label for="diagnostico">Diagnóstico</label>
+            <div class="caja-sugerible">
+              <input type="text" id="diagnostico" class="entrada" autocomplete="off"
+                     role="combobox" aria-expanded="false" aria-autocomplete="list"
+                     aria-controls="lista-diagnostico" placeholder="Escribí el diagnóstico">
+              <ul class="sugerencias" id="lista-diagnostico" role="listbox" hidden></ul>
+            </div>
+            <p class="hint">Se guarda en el historial, no sale impreso.</p>
+          </div>
+        </fieldset>
+
+        <!-- Medicamentos -->
+        <fieldset class="bloque">
+          <legend class="bloque-titulo">Medicamentos</legend>
+          <div id="renglones"></div>
+          <button type="button" class="boton-secundario boton-agregar" id="btn-agregar">
+            + Agregar medicamento
+          </button>
+        </fieldset>
+
+        <!-- Indicaciones generales -->
+        <fieldset class="bloque">
+          <legend class="bloque-titulo">Indicaciones generales</legend>
+          <div class="campo">
+            <label for="ind-generales">Indicaciones generales (van en la mitad derecha del récipe)</label>
+            <textarea id="ind-generales" class="entrada area" rows="4"
+                      placeholder="Reposo, dieta, control en 15 días…"></textarea>
+          </div>
+        </fieldset>
+
+        <!-- Aviso de capacidad -->
+        <div class="aviso-capacidad" id="aviso-capacidad" role="alert" hidden>
+          <p class="aviso-texto" id="aviso-texto">
+            No caben tantos renglones en la hoja. Quitá medicamentos o acortá las dosis.
+          </p>
+        </div>
+
+        <p class="medida" id="medida" hidden></p>
+
+        <!-- Botón único -->
+        <div class="zona-guardar">
+          <button type="button" class="boton-principal" id="btn-guardar">Guardar e imprimir</button>
+          <p class="hint hint-guardar">Asigna el código, guarda el récipe, genera el PDF y lo abre para imprimir.</p>
+        </div>
+
+      </div>
+
+      <!-- ── Columna derecha: vista previa ── -->
+      <aside class="columna-previa" aria-label="Vista previa del récipe">
+        <div class="previa-encabezado">
+          <h2 class="previa-titulo">Vista previa</h2>
+          <button type="button" class="boton-secundario" id="btn-refrescar">Actualizar vista previa</button>
+        </div>
+        <p class="previa-estado" id="previa-estado" role="status">
+          Escribí el paciente y al menos un medicamento para ver la vista previa.
+        </p>
+        <div class="previa-marco">
+          <iframe id="previa-iframe" title="Vista previa del récipe en PDF" hidden></iframe>
+          <div class="previa-vacia" id="previa-vacia">
+            <p>Acá vas a ver la hoja tal cual sale impresa.</p>
+            <p class="chico">El número todavía no se asigna: sale
+              <strong id="relleno-codigo">EC-____-____</strong> hasta que guardes.</p>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- ══════════ PANEL B · HISTORIAL ══════════ -->
+  <section class="panel" id="panel-historial" role="tabpanel" aria-labelledby="tab-historial" hidden>
+
+    <div class="trabajo trabajo-historial">
+
+      <!-- ── Columna izquierda: buscador + tabla ── -->
+      <div class="columna-form columna-historial" id="columna-historial">
+
+        <div class="bloque bloque-buscador">
+          <div class="campo">
+            <label class="etiqueta-grande" for="hist-q">Buscá por código, paciente o medicamento</label>
+            <input type="search" id="hist-q" class="entrada entrada-buscador" autocomplete="off"
+                   spellcheck="false" placeholder="EC-2026-0001, Pérez, ibuprofeno…">
+          </div>
+
+          <div class="fila fila-fechas">
+            <div class="campo">
+              <label for="hist-desde">Desde (opcional)</label>
+              <input type="date" id="hist-desde" class="entrada">
+            </div>
+            <div class="campo">
+              <label for="hist-hasta">Hasta (opcional)</label>
+              <input type="date" id="hist-hasta" class="entrada">
+            </div>
+            <div class="campo campo-boton">
+              <button type="button" class="boton-secundario" id="hist-limpiar">Limpiar búsqueda</button>
+            </div>
+          </div>
+
+          <p class="hint" id="hist-resumen" role="status">Cargando récipes…</p>
+        </div>
+
+        <div class="aviso-ok" id="hist-aviso" role="status" hidden></div>
+        <div class="error-global" id="hist-error" role="alert" hidden></div>
+
+        <div class="tabla-envoltorio">
+          <table class="tabla-historial">
+            <thead>
+              <tr>
+                <th scope="col" class="col-codigo">Código</th>
+                <th scope="col" class="col-fecha">Fecha</th>
+                <th scope="col" class="col-paciente">Paciente</th>
+                <th scope="col" class="col-medicamentos">Medicamentos</th>
+                <th scope="col" class="col-estado">Estado</th>
+                <th scope="col" class="col-acciones">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="hist-cuerpo"></tbody>
+          </table>
+          <p class="tabla-vacia" id="hist-vacio" hidden></p>
+        </div>
+
+      </div>
+
+      <!-- ── Columna derecha: el PDF guardado ── -->
+      <aside class="columna-previa columna-previa-historial" aria-label="PDF del récipe seleccionado">
+        <div class="previa-encabezado">
+          <h2 class="previa-titulo">PDF guardado</h2>
+          <button type="button" class="boton-secundario" id="hist-cerrar-pdf" hidden>Cerrar PDF</button>
+        </div>
+        <p class="previa-estado" id="hist-previa-estado" role="status">
+          Elegí «Ver PDF» en un récipe para verlo acá.
+        </p>
+        <div class="previa-marco">
+          <iframe id="hist-iframe" title="PDF del récipe seleccionado" hidden></iframe>
+          <div class="previa-vacia" id="hist-previa-vacia">
+            <p>Acá se abre el PDF tal cual quedó guardado.</p>
+            <p class="chico">Es el archivo original: no se regenera ni cambia de código.</p>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- ══════════ PANEL C · CONFIGURACIÓN ══════════ -->
+  <section class="panel" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+    <div class="columna-config" id="columna-config">
+
+      <div class="error-global" id="cfg-error" role="alert" hidden></div>
+
+      <!-- ── Datos del médico ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-medico">
+        <h2 class="titulo-config" id="cfg-t-medico">Datos del médico</h2>
+        <p class="nota-config">
+          Estos datos <strong>no salen impresos</strong> en el récipe: el talonario se
+          completa con tu sello. Se guardan acá para el Excel y para el día que haga
+          falta imprimirlos.
+        </p>
+
+        <div class="fila fila-config-2">
+          <div class="campo">
+            <label for="cfg-nombre">Nombre completo</label>
+            <input type="text" id="cfg-nombre" class="entrada" autocomplete="off" data-config="nombre">
+          </div>
+          <div class="campo">
+            <label for="cfg-especialidad">Especialidad</label>
+            <input type="text" id="cfg-especialidad" class="entrada" autocomplete="off" data-config="especialidad">
+          </div>
+        </div>
+
+        <div class="fila fila-config-3">
+          <div class="campo">
+            <label for="cfg-mpps">MPPS</label>
+            <input type="text" id="cfg-mpps" class="entrada" autocomplete="off" data-config="mpps">
+          </div>
+          <div class="campo">
+            <label for="cfg-colegio">Colegio de médicos</label>
+            <input type="text" id="cfg-colegio" class="entrada" autocomplete="off" data-config="colegio">
+          </div>
+          <div class="campo">
+            <label for="cfg-rif">RIF</label>
+            <input type="text" id="cfg-rif" class="entrada" autocomplete="off" data-config="rif">
+          </div>
+        </div>
+
+        <div class="fila fila-config-2">
+          <div class="campo">
+            <label for="cfg-direccion">Dirección</label>
+            <input type="text" id="cfg-direccion" class="entrada" autocomplete="off" data-config="direccion">
+          </div>
+          <div class="campo">
+            <label for="cfg-telefonos">Teléfonos</label>
+            <input type="text" id="cfg-telefonos" class="entrada" autocomplete="off" data-config="telefonos">
+          </div>
+        </div>
+
+        <p class="nota-config nota-firma">
+          No hay carga de firma: el médico firma a mano sobre el papel impreso, así que
+          el PDF deja el espacio en blanco y la app no guarda ninguna imagen de firma.
+        </p>
+      </section>
+
+      <!-- ── Código de los récipes ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-codigo">
+        <h2 class="titulo-config" id="cfg-t-codigo">Código de los récipes</h2>
+        <div class="fila fila-config-prefijo">
+          <div class="campo">
+            <label for="cfg-prefijo">Prefijo</label>
+            <input type="text" id="cfg-prefijo" class="entrada entrada-prefijo" autocomplete="off"
+                   spellcheck="false" maxlength="10" data-config="prefijo">
+            <p class="hint">De 1 a 10 letras o números, sin espacios ni guiones.</p>
+          </div>
+          <div class="campo">
+            <span class="etiqueta-suelta">Ejemplo de código con este prefijo</span>
+            <p class="muestra-codigo" id="cfg-muestra">EC-2026-0001</p>
+          </div>
+        </div>
+        <p class="nota-config">Los récipes ya emitidos conservan su código.</p>
+      </section>
+
+      <!-- ── Logo ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-logo">
+        <h2 class="titulo-config" id="cfg-t-logo">Logo</h2>
+
+        <div class="logo-fila">
+          <div class="logo-marco">
+            <img id="cfg-logo-img" class="logo-img" alt="Logo que se imprime en el récipe" hidden>
+            <p class="logo-sin" id="cfg-logo-sin">
+              El logo cargado se imprime en cada récipe. Elegí un archivo para verlo y reemplazarlo.
+            </p>
+          </div>
+
+          <div class="logo-controles">
+            <label for="cfg-logo-archivo">Cambiar el logo (PNG o JPG)</label>
+            <input type="file" id="cfg-logo-archivo" class="entrada entrada-archivo"
+                   accept="image/png,image/jpeg">
+            <p class="hint">
+              Tiene que medir al menos 350 píxeles de ancho: más chico sale pixelado al imprimir.
+            </p>
+            <button type="button" class="boton-secundario" id="cfg-logo-subir" disabled>Guardar logo</button>
+            <p class="resultado-accion" id="cfg-logo-estado" role="status" hidden></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── PIN ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-pin">
+        <h2 class="titulo-config" id="cfg-t-pin">PIN al abrir</h2>
+        <p class="nota-config" id="cfg-pin-estado">El PIN está desactivado: la app abre directo.</p>
+
+        <div class="fila fila-config-3">
+          <div class="campo" id="cfg-pin-actual-campo" hidden>
+            <label for="cfg-pin-actual">PIN actual</label>
+            <input type="password" id="cfg-pin-actual" class="entrada entrada-pin-corta"
+                   inputmode="numeric" autocomplete="off" maxlength="6">
+          </div>
+          <div class="campo">
+            <label for="cfg-pin-nuevo">PIN nuevo (4 a 6 dígitos)</label>
+            <input type="password" id="cfg-pin-nuevo" class="entrada entrada-pin-corta"
+                   inputmode="numeric" autocomplete="off" maxlength="6">
+          </div>
+          <div class="campo">
+            <label for="cfg-pin-repetir">Repetí el PIN nuevo</label>
+            <input type="password" id="cfg-pin-repetir" class="entrada entrada-pin-corta"
+                   inputmode="numeric" autocomplete="off" maxlength="6">
+          </div>
+        </div>
+
+        <label class="casilla">
+          <input type="checkbox" id="cfg-pin-ver">
+          <span>Mostrar los PIN mientras escribo</span>
+        </label>
+
+        <div class="botones-config">
+          <button type="button" class="boton-secundario" id="cfg-pin-guardar">Activar PIN</button>
+          <button type="button" class="boton-peligro-suave" id="cfg-pin-quitar" hidden>Desactivar PIN</button>
+        </div>
+        <p class="resultado-accion" id="cfg-pin-resultado" role="status" hidden></p>
+        <p class="nota-config nota-chica">
+          El PIN es una barrera contra quien pase frente a la computadora, no una
+          caja fuerte: los archivos siguen estando en tu carpeta de datos.
+        </p>
+      </section>
+
+      <!-- ── Datos y respaldo ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-datos">
+        <h2 class="titulo-config" id="cfg-t-datos">Datos y respaldo</h2>
+
+        <p class="etiqueta-suelta">Carpeta de datos</p>
+        <p class="ruta-carpeta" id="cfg-carpeta">—</p>
+        <p class="nota-config">
+          Ahí viven la base, los PDF, el registro de Excel y los respaldos. Copiá esa
+          carpeta entera y tenés todo.
+        </p>
+
+        <div class="botones-config">
+          <button type="button" class="boton-secundario" id="cfg-abrir-carpeta">Abrir carpeta</button>
+          <button type="button" class="boton-secundario" id="cfg-respaldar">Respaldar ahora</button>
+        </div>
+        <p class="resultado-accion" id="cfg-respaldo-resultado" role="status" hidden></p>
+      </section>
+
+      <!-- ── Ayuda ── -->
+      <section class="bloque bloque-config" aria-labelledby="cfg-t-ayuda">
+        <h2 class="titulo-config" id="cfg-t-ayuda">Ayuda</h2>
+        <p class="nota-config">
+          El recorrido guiado que se abre la primera vez. Te muestra, sobre la
+          pantalla misma, cómo emitir un récipe. Podés verlo las veces que quieras.
+        </p>
+        <div class="botones-config">
+          <button type="button" class="boton-secundario" id="cfg-ver-tutorial">
+            Ver el tutorial de nuevo
+          </button>
+        </div>
+        <p class="nota-config nota-chica">
+          Se abre en la pestaña «Nuevo récipe»: nada de lo que estés escribiendo se pierde.
+        </p>
+      </section>
+
+      <p class="version-app" id="cfg-version"></p>
+
+      <div class="barra-guardar" id="cfg-barra">
+        <p class="barra-guardar-texto" id="cfg-barra-texto">Todo guardado.</p>
+        <button type="button" class="boton-principal boton-guardar-config" id="cfg-guardar" disabled>
+          Guardar cambios
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ══════════ Modal: anular récipe ══════════ -->
+<div class="modal" id="modal-anular" hidden>
+  <div class="modal-fondo" id="modal-anular-fondo"></div>
+  <div class="modal-caja" role="dialog" aria-modal="true"
+       aria-labelledby="modal-anular-titulo" id="modal-anular-caja">
+    <h2 class="modal-titulo" id="modal-anular-titulo">Anular récipe</h2>
+    <p class="modal-sub" id="modal-anular-sub"></p>
+
+    <p class="modal-aviso" id="modal-anular-aviso">
+      El récipe queda anulado para siempre; el código EC-… no se vuelve a usar.
+    </p>
+
+    <div class="campo">
+      <label for="modal-anular-motivo">Motivo de la anulación</label>
+      <textarea id="modal-anular-motivo" class="entrada area" rows="4"
+                placeholder="Por ejemplo: error en la dosis; se emitió otro récipe."></textarea>
+      <p class="hint">Queda guardado en el historial y en el Excel.</p>
+    </div>
+
+    <p class="modal-error" id="modal-anular-error" role="alert" hidden></p>
+
+    <div class="modal-botones">
+      <button type="button" class="boton-secundario" id="modal-anular-cancelar">Cancelar</button>
+      <button type="button" class="boton-peligro" id="modal-anular-aceptar">Anular récipe</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Cerrojo: PIN al abrir (§10) ══════════ -->
+<div class="cerrojo" id="cerrojo" hidden>
+  <div class="cerrojo-caja" role="dialog" aria-modal="true" aria-labelledby="cerrojo-titulo">
+    <img id="cerrojo-logo" class="cerrojo-logo" alt="" hidden>
+    <p class="cerrojo-marca">Récipes · Espacio Corporal</p>
+    <h1 class="cerrojo-titulo" id="cerrojo-titulo">Ingresá tu PIN</h1>
+    <input type="password" id="cerrojo-pin" class="entrada entrada-pin-grande"
+           inputmode="numeric" autocomplete="off" maxlength="6"
+           aria-label="PIN de 4 a 6 dígitos">
+    <button type="button" class="boton-principal boton-cerrojo" id="cerrojo-btn">Entrar</button>
+    <p class="cerrojo-error" id="cerrojo-error" role="alert" hidden>PIN incorrecto. Probá de nuevo.</p>
+  </div>
+</div>
+
+<!-- ══════════ Tutorial de primer uso ══════════
+     Se muestra solo la primera vez (config: tutorial_visto) y se puede volver
+     a ver desde Configuración › Ayuda. El "foco" es un recuadro vacío con una
+     sombra enorme alrededor: oscurece toda la pantalla MENOS el elemento que
+     está explicando, y le pone el borde teal encima. -->
+<div class="tutorial" id="tutorial" hidden>
+  <div class="tutorial-foco" id="tutorial-foco" aria-hidden="true" hidden></div>
+
+  <div class="tutorial-globo" id="tutorial-globo" role="dialog" aria-modal="true"
+       aria-labelledby="tutorial-titulo" aria-describedby="tutorial-texto">
+
+    <div id="tutorial-cuerpo">
+      <p class="tutorial-paso" id="tutorial-paso">Paso 1 de 7</p>
+      <h2 class="tutorial-titulo" id="tutorial-titulo">Bienvenido</h2>
+      <p class="tutorial-texto" id="tutorial-texto"></p>
+
+      <div class="tutorial-botones">
+        <button type="button" class="boton-secundario tutorial-boton" id="tutorial-anterior">Anterior</button>
+        <button type="button" class="boton-principal tutorial-boton" id="tutorial-siguiente">Siguiente</button>
+      </div>
+      <button type="button" class="tutorial-saltar" id="tutorial-saltar">Saltar el tutorial</button>
+    </div>
+
+    <!-- Confirmación suave del Escape, en el mismo globo -->
+    <div id="tutorial-confirma" hidden>
+      <h2 class="tutorial-titulo">¿Cerrar el tutorial?</h2>
+      <p class="tutorial-texto">Lo podés volver a ver desde Configuración.</p>
+      <div class="tutorial-botones">
+        <button type="button" class="boton-secundario tutorial-boton" id="tutorial-seguir">Seguir viéndolo</button>
+        <button type="button" class="boton-principal tutorial-boton" id="tutorial-cerrar">Cerrarlo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Va fuera del globo, y después: el globo se desplaza por dentro cuando la
+       ventana es muy chica y ahí adentro la punta quedaría recortada. -->
+  <div class="tutorial-punta" id="tutorial-punta" aria-hidden="true" hidden></div>
+</div>
+
+<!-- Plantilla de un renglón de medicamento -->
+<template id="tpl-renglon">
+  <div class="renglon">
+    <div class="renglon-cabecera">
+      <span class="renglon-numero">Medicamento 1</span>
+      <button type="button" class="boton-quitar" data-quitar>Quitar</button>
+    </div>
+
+    <div class="fila fila-medicamento">
+      <div class="campo campo-ancho">
+        <label data-para="med">Medicamento</label>
+        <div class="caja-sugerible">
+          <input type="text" class="entrada" data-campo="medicamento" autocomplete="off"
+                 spellcheck="false" role="combobox" aria-expanded="false"
+                 aria-autocomplete="list" placeholder="Escribí el medicamento">
+          <ul class="sugerencias" role="listbox" data-lista="medicamento" hidden></ul>
+        </div>
+      </div>
+
+      <div class="campo campo-presentacion">
+        <label data-para="pres">Presentación</label>
+        <input type="text" class="entrada" data-campo="presentacion" autocomplete="off"
+               spellcheck="false" placeholder="Tabletas 500 mg">
+      </div>
+
+      <div class="campo campo-cantidad">
+        <label data-para="cant">Cantidad</label>
+        <input type="text" class="entrada" data-campo="cantidad" autocomplete="off"
+               spellcheck="false" placeholder="1 caja">
+      </div>
+    </div>
+
+    <div class="sugerencia-dosis" data-sug-dosis hidden>
+      <span class="sugerencia-etiqueta">Dosis más usada de este medicamento:</span>
+      <span class="sugerencia-texto" data-sug-texto></span>
+      <button type="button" class="boton-usar" data-usar-dosis>Usar</button>
+      <button type="button" class="boton-descartar" data-descartar-dosis>Descartar</button>
+    </div>
+
+    <div class="fila fila-dosis">
+      <div class="campo campo-ancho">
+        <label data-para="dosis">Dosis</label>
+        <div class="caja-sugerible">
+          <input type="text" class="entrada" data-campo="dosis" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list"
+                 placeholder="1 tableta cada 8 horas por 7 días">
+          <ul class="sugerencias" role="listbox" data-lista="dosis" hidden></ul>
+        </div>
+      </div>
+
+      <div class="campo campo-ancho">
+        <label data-para="ind">Indicaciones</label>
+        <div class="caja-sugerible">
+          <input type="text" class="entrada" data-campo="indicaciones" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list"
+                 placeholder="Después de las comidas">
+          <ul class="sugerencias" role="listbox" data-lista="indicaciones" hidden></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

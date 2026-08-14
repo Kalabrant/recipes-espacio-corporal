@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Salidas de construcción (el instalador se publica en GitHub Releases, no en el repo)
+build/dist/
+build/tmp/
+build/salida/
+
+# Duplicados en la raíz (las copias de trabajo viven en referencias/)
+/Logo.jpg
+/Récipe Espacio.pdf
+
+# Datos locales (los datos del médico JAMÁS van al repositorio)
+datos/
+*.db
+*.db-wal
+*.db-shm

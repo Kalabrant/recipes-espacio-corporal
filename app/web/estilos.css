@@ -1,0 +1,1407 @@
+/* ============================================================
+   Récipes — Espacio Corporal
+   Interfaz de escritorio. Sin CDN, sin fuentes remotas, sin build.
+   Tipografía del sistema. Mínimo 16 px, campos de 46 px, foco visible.
+   ============================================================ */
+
+:root {
+  /* Marca */
+  --verde:        #9ABE0F;   /* acento y botón principal, con moderación */
+  --verde-oscuro: #7E9D0B;
+  --teal:         #157F6F;   /* foco, activos, títulos */
+  --teal-claro:   #E6F2F0;
+
+  /* Neutros */
+  --texto:        #1F2937;
+  --texto-suave:  #4B5563;
+  --texto-tenue:  #6B7280;
+  --linea:        #D1D5DB;
+  --linea-suave:  #E5E7EB;
+  --fondo:        #EEF0F2;
+  --papel:        #FFFFFF;
+
+  /* Estados */
+  --rojo:         #B42318;
+  --rojo-fondo:   #FDECEA;
+  --ambar:        #92400E;
+  --ambar-fondo:  #FEF3C7;
+
+  --radio:        6px;
+  --alto-campo:   46px;
+  --sombra:       0 1px 2px rgba(31, 41, 55, .08), 0 1px 3px rgba(31, 41, 55, .06);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--texto);
+  background: var(--fondo);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;                 /* el scroll vive dentro de las columnas */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Nada de selección accidental de etiquetas al hacer doble clic */
+label, legend, .pestana, .renglon-numero { user-select: none; }
+
+/* ---------- Foco: siempre visible, nunca sutil ---------- */
+:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ============================================================
+   Barra superior
+   ============================================================ */
+.barra {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 28px;
+  background: var(--papel);
+  border-bottom: 1px solid var(--linea);
+  padding: 0 20px;
+  box-shadow: var(--sombra);
+  z-index: 20;
+}
+
+.marca {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 22px 10px 0;
+  border-right: 1px solid var(--linea-suave);
+}
+
+.marca-nombre {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: var(--teal);
+  line-height: 1.15;
+}
+
+.marca-sub {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+.pestanas { display: flex; gap: 4px; }
+
+.pestana {
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  background: none;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  padding: 0 20px;
+  min-height: 58px;
+  cursor: pointer;
+}
+
+.pestana:hover { color: var(--teal); background: var(--teal-claro); }
+
+.pestana.activa {
+  color: var(--teal);
+  border-bottom-color: var(--verde);
+}
+
+/* ============================================================
+   Estructura
+   ============================================================ */
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.panel { flex: 1 1 auto; min-height: 0; display: flex; }
+.panel[hidden] { display: none; }
+
+.trabajo {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(560px, 1fr) minmax(420px, 46%);
+  gap: 0;
+}
+
+.columna-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 60px;
+}
+
+.columna-previa {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--papel);
+  border-left: 1px solid var(--linea);
+  padding: 16px 18px 18px;
+}
+
+/* En ventanas angostas la vista previa pasa abajo */
+@media (max-width: 1100px) {
+  body { overflow: auto; }
+  main { display: block; }
+  .panel { display: block; }
+  .trabajo { display: block; }
+  .columna-form { overflow: visible; }
+  .columna-previa { border-left: 0; border-top: 1px solid var(--linea); height: 620px; }
+}
+
+/* ============================================================
+   Bloques del formulario
+   ============================================================ */
+.bloque {
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  margin: 0 0 18px;
+  padding: 6px 18px 18px;
+}
+
+.bloque-titulo {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  padding: 0 8px;
+  margin-left: -8px;
+}
+
+.fila {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+
+.fila-paciente     { grid-template-columns: minmax(0, 1fr) 190px 110px; }
+.fila-medicamento  { grid-template-columns: minmax(0, 1fr) 240px 150px; }
+.fila-dosis        { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-top: 12px; }
+
+@media (max-width: 1400px) {
+  .fila-paciente    { grid-template-columns: minmax(0, 1fr) 170px 100px; }
+  .fila-medicamento { grid-template-columns: minmax(0, 1fr) 200px 130px; }
+}
+@media (max-width: 1100px) {
+  .fila-paciente, .fila-medicamento, .fila-dosis { grid-template-columns: minmax(0, 1fr); }
+}
+
+.campo { display: flex; flex-direction: column; min-width: 0; }
+
+/* `display: flex` le gana al atributo hidden: hay que decirlo aparte. */
+.campo[hidden], .fila[hidden] { display: none; }
+
+.campo label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  margin: 10px 0 5px;
+}
+
+/* ---------- Entradas ---------- */
+.entrada {
+  font-family: inherit;
+  font-size: 17px;
+  color: var(--texto);
+  background: var(--papel);
+  border: 1px solid #9CA3AF;
+  border-radius: var(--radio);
+  min-height: var(--alto-campo);
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.entrada::placeholder { color: #9CA3AF; }
+
+.entrada:hover { border-color: #6B7280; }
+
+.entrada:focus {
+  border-color: var(--teal);
+  outline: 3px solid var(--teal);
+  outline-offset: 1px;
+}
+
+.area {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.hint {
+  font-size: 14px;
+  color: var(--texto-tenue);
+  margin: 6px 0 0;
+}
+
+.hint-paciente {
+  font-weight: 600;
+  color: var(--teal);
+}
+
+/* ============================================================
+   Autocompletado (§8)
+   ============================================================ */
+.caja-sugerible { position: relative; }
+
+.sugerencias {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--papel);
+  border: 1px solid var(--teal);
+  border-radius: var(--radio);
+  box-shadow: 0 8px 22px rgba(31, 41, 55, .18);
+  max-height: 336px;
+  overflow-y: auto;
+}
+
+.sugerencias[hidden] { display: none; }
+
+.sugerencia {
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1.3;
+  border-left: 4px solid transparent;
+}
+
+.sugerencia mark {
+  background: #F2F7CF;
+  color: inherit;
+  font-weight: 700;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.sugerencia.activa {
+  background: var(--teal-claro);
+  border-left-color: var(--teal);
+}
+
+.sugerencia-detalle {
+  display: block;
+  font-size: 14px;
+  color: var(--texto-tenue);
+  margin-top: 2px;
+}
+
+.sugerencia.activa .sugerencia-detalle { color: var(--texto-suave); }
+
+/* ============================================================
+   Renglones de medicamento
+   ============================================================ */
+.renglon {
+  border: 1px solid var(--linea-suave);
+  border-left: 4px solid var(--verde);
+  border-radius: var(--radio);
+  background: #FBFCFA;
+  padding: 4px 14px 16px;
+  margin: 14px 0 0;
+}
+
+.renglon-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.renglon-numero {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+/* ---------- Sugerencia de dosis (§2.5: nunca se rellena sola) ---------- */
+.sugerencia-dosis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--teal-claro);
+  border: 1px solid #A7CFC8;
+  border-radius: var(--radio);
+}
+
+.sugerencia-dosis[hidden] { display: none; }
+
+.sugerencia-etiqueta { font-size: 15px; color: var(--texto-suave); }
+
+.sugerencia-texto {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--teal);
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+/* ============================================================
+   Botones
+   ============================================================ */
+.boton-secundario {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--teal);
+  background: var(--papel);
+  border: 2px solid var(--teal);
+  border-radius: var(--radio);
+  min-height: 44px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+
+.boton-secundario:hover { background: var(--teal-claro); }
+.boton-secundario:active { background: #D3E7E3; }
+
+.boton-agregar { margin-top: 16px; }
+
+.boton-quitar {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--rojo);
+  background: var(--papel);
+  border: 1px solid #E0A9A3;
+  border-radius: var(--radio);
+  min-height: 38px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.boton-quitar:hover { background: var(--rojo-fondo); }
+.boton-quitar[hidden] { display: none; }
+
+.boton-usar, .boton-descartar {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: var(--radio);
+  min-height: 38px;
+  padding: 4px 16px;
+  cursor: pointer;
+}
+
+.boton-usar {
+  color: var(--texto);
+  background: var(--verde);
+  border: 1px solid var(--verde-oscuro);
+}
+.boton-usar:hover { background: var(--verde-oscuro); color: #fff; }
+
+.boton-descartar {
+  color: var(--texto-suave);
+  background: transparent;
+  border: 1px solid var(--linea);
+}
+.boton-descartar:hover { background: #fff; }
+
+/* ---------- Botón principal ---------- */
+.zona-guardar {
+  margin-top: 8px;
+  padding: 18px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  text-align: center;
+}
+
+.boton-principal {
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--texto);
+  background: var(--verde);
+  border: 1px solid var(--verde-oscuro);
+  border-radius: var(--radio);
+  min-height: 68px;
+  width: 100%;
+  max-width: 560px;
+  padding: 10px 26px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--verde-oscuro);
+}
+
+.boton-principal:hover { background: #A8CE12; }
+.boton-principal:active { transform: translateY(1px); box-shadow: none; }
+
+.boton-principal:disabled {
+  background: #E5E7EB;
+  border-color: var(--linea);
+  color: #9CA3AF;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.hint-guardar { margin-top: 10px; }
+
+/* ============================================================
+   Avisos
+   ============================================================ */
+.aviso-capacidad {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: var(--ambar-fondo);
+  border: 2px solid #D9A441;
+  border-radius: var(--radio);
+}
+
+.aviso-capacidad[hidden] { display: none; }
+
+.aviso-texto {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ambar);
+}
+
+.medida {
+  margin: -6px 0 16px;
+  font-size: 14px;
+  color: var(--texto-tenue);
+}
+.medida[hidden] { display: none; }
+
+.error-global {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: var(--rojo-fondo);
+  border: 2px solid #E0A9A3;
+  border-radius: var(--radio);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--rojo);
+}
+.error-global[hidden] { display: none; }
+
+.entrada.con-error {
+  border-color: var(--rojo);
+  background: #FFF8F7;
+}
+
+/* ---------- Éxito ---------- */
+.exito {
+  margin: 0 0 18px;
+  padding: 22px 20px;
+  background: #F4F9E0;
+  border: 2px solid var(--verde);
+  border-radius: var(--radio);
+  text-align: center;
+}
+.exito[hidden] { display: none; }
+
+.exito-codigo {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--teal);
+}
+
+.exito-texto {
+  margin: 6px 0 14px;
+  font-size: 19px;
+  color: var(--texto);
+}
+
+/* ============================================================
+   Vista previa
+   ============================================================ */
+.previa-encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.previa-titulo {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--teal);
+}
+
+.previa-estado {
+  flex: 0 0 auto;
+  margin: 10px 0;
+  font-size: 15px;
+  color: var(--texto-suave);
+  min-height: 22px;
+}
+
+.previa-estado.con-error { color: var(--rojo); font-weight: 600; }
+
+.previa-marco {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  background: #4B5563;
+  overflow: hidden;
+}
+
+#previa-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #4B5563;
+}
+#previa-iframe[hidden] { display: none; }
+
+.previa-vacia {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: #E5E7EB;
+  font-size: 16px;
+}
+.previa-vacia[hidden] { display: none; }
+.previa-vacia p { margin: 0; }
+.previa-vacia .chico { font-size: 14px; color: #D1D5DB; }
+
+.previa-marco.cargando::after {
+  content: "Generando vista previa…";
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 41, 55, .92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  z-index: 5;
+}
+
+/* ============================================================
+   B · HISTORIAL
+   ============================================================ */
+/* La tabla se queda con todo el ancho mientras no haya ningún PDF abierto:
+   el marco de la derecha aparece recién cuando se pulsa «Ver PDF». */
+.trabajo-historial { grid-template-columns: minmax(0, 1fr); }
+.trabajo-historial .columna-previa-historial { display: none; }
+
+.trabajo-historial.con-pdf { grid-template-columns: minmax(520px, 1fr) minmax(380px, 42%); }
+.trabajo-historial.con-pdf .columna-previa-historial { display: flex; }
+
+/* Con el PDF al lado, la lista se queda con lo que identifica cada récipe: el
+   resumen de medicamentos sobra, porque están a la vista en la hoja. */
+.trabajo-historial.con-pdf .tabla-historial { min-width: 0; }
+.trabajo-historial.con-pdf .col-medicamentos,
+.trabajo-historial.con-pdf .celda-medicamentos { display: none; }
+.trabajo-historial.con-pdf .col-acciones { width: 150px; }
+.trabajo-historial.con-pdf .acciones-fila { flex-direction: column; }
+.trabajo-historial.con-pdf .boton-fila { width: 100%; }
+
+/* Si no hay ancho para las dos cosas, el PDF se queda con el panel entero:
+   una hoja carta apretada en media pantalla no se lee. */
+.trabajo-historial.con-pdf-solo { grid-template-columns: minmax(0, 1fr); }
+.trabajo-historial.con-pdf-solo .columna-historial { display: none; }
+.trabajo-historial.con-pdf-solo .columna-previa-historial { display: flex; border-left: 0; }
+
+.columna-historial { padding: 22px 26px 60px; }
+
+/* ---------- Buscador ---------- */
+.bloque-buscador { padding: 18px; }
+
+.etiqueta-grande {
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  color: var(--texto) !important;
+  margin: 0 0 8px !important;
+}
+
+.entrada-buscador {
+  font-size: 20px;
+  min-height: 56px;
+}
+
+.fila-fechas {
+  grid-template-columns: 200px 200px minmax(0, 1fr);
+  align-items: end;
+  margin-top: 14px;
+}
+
+.campo-boton { justify-content: flex-end; }
+.campo-boton .boton-secundario { margin-top: 10px; }
+
+@media (max-width: 1100px) {
+  .fila-fechas { grid-template-columns: minmax(0, 1fr); }
+  .campo-boton { justify-content: flex-start; }
+}
+
+/* ---------- Tabla ---------- */
+.tabla-envoltorio {
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  overflow-x: auto;
+}
+
+.tabla-historial {
+  width: 100%;
+  min-width: 900px;          /* antes de apretujarse, el envoltorio scrollea */
+  border-collapse: collapse;
+  font-size: 16px;
+}
+
+.tabla-historial th {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+  background: #F6F7F8;
+  border-bottom: 2px solid var(--linea);
+  padding: 12px 14px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.tabla-historial td {
+  border-bottom: 1px solid var(--linea-suave);
+  padding: 12px 14px;
+  vertical-align: top;
+}
+
+.tabla-historial tbody tr:hover { background: #FAFBF6; }
+
+.col-codigo      { width: 150px; }
+.col-fecha       { width: 105px; }
+.col-paciente    { width: 190px; }
+.col-estado      { width: 180px; }
+.col-acciones    { width: 205px; }
+
+.celda-codigo {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--teal);
+  white-space: nowrap;
+}
+
+.celda-fecha { white-space: nowrap; color: var(--texto-suave); }
+
+.celda-paciente-nombre { font-weight: 600; }
+
+.celda-paciente-cedula {
+  display: block;
+  font-size: 14px;
+  color: var(--texto-tenue);
+}
+
+.celda-medicamentos {
+  color: var(--texto-suave);
+  line-height: 1.35;
+}
+
+.celda-diagnostico {
+  display: block;
+  font-size: 14px;
+  color: var(--texto-tenue);
+  margin-top: 3px;
+}
+
+.estado-vigente {
+  font-weight: 600;
+  color: var(--teal);
+}
+
+.estado-anulado {
+  font-weight: 700;
+  color: var(--rojo);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-size: 14px;
+}
+
+.estado-motivo {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--texto-suave);
+  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Fila anulada: gris, con el código tachado (§10) */
+.fila-anulada { background: #F1F2F3; color: var(--texto-tenue); }
+.fila-anulada:hover { background: #ECEEEF; }
+.fila-anulada .celda-codigo {
+  color: var(--texto-tenue);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+.fila-anulada .celda-paciente-nombre,
+.fila-anulada .celda-medicamentos { color: var(--texto-tenue); }
+
+/* ---------- Acciones por fila ---------- */
+.acciones-fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.boton-fila {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--teal);
+  background: var(--papel);
+  border: 1px solid var(--teal);
+  border-radius: var(--radio);
+  min-height: 38px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.boton-fila:hover { background: var(--teal-claro); }
+
+.boton-fila-peligro { color: var(--rojo); border-color: #E0A9A3; }
+.boton-fila-peligro:hover { background: var(--rojo-fondo); }
+
+.boton-fila:disabled,
+.boton-fila[disabled] {
+  color: #9CA3AF;
+  border-color: var(--linea);
+  background: #F3F4F6;
+  cursor: not-allowed;
+}
+
+.tabla-vacia {
+  margin: 0;
+  padding: 42px 20px;
+  text-align: center;
+  font-size: 18px;
+  color: var(--texto-suave);
+}
+.tabla-vacia[hidden] { display: none; }
+
+/* ---------- Aviso verde de acción hecha ---------- */
+.aviso-ok {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #F4F9E0;
+  border: 2px solid var(--verde);
+  border-radius: var(--radio);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--texto);
+}
+.aviso-ok[hidden] { display: none; }
+
+.columna-previa-historial { padding: 16px 18px 18px; }
+
+/* En ventana angosta el PDF pasa abajo y la página entera scrollea */
+@media (max-width: 1100px) {
+  .columna-historial { overflow: visible; }
+  .columna-config { overflow: visible; }
+}
+
+/* ============================================================
+   C · CONFIGURACIÓN
+   ============================================================ */
+.columna-config {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 40px;
+}
+
+.bloque-config {
+  max-width: 980px;
+  padding: 18px 20px 20px;
+}
+
+.titulo-config {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+
+.nota-config {
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--texto-suave);
+  max-width: 70ch;
+}
+
+.nota-chica { font-size: 14px; color: var(--texto-tenue); }
+
+.nota-firma {
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: #F6F7F8;
+  border-left: 4px solid var(--linea);
+  border-radius: 0 var(--radio) var(--radio) 0;
+}
+
+.fila-config-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.fila-config-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fila-config-prefijo { grid-template-columns: 220px minmax(0, 1fr); align-items: end; }
+
+@media (max-width: 1100px) {
+  .fila-config-2, .fila-config-3, .fila-config-prefijo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.etiqueta-suelta {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  margin: 10px 0 5px;
+}
+
+.entrada-prefijo {
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+.muestra-codigo {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--teal);
+}
+
+/* ---------- Logo ---------- */
+.logo-fila {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+@media (max-width: 1100px) {
+  .logo-fila { grid-template-columns: minmax(0, 1fr); }
+}
+
+.logo-marco {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 130px;
+  padding: 12px;
+  background: #FFFFFF;
+  border: 1px dashed var(--linea);
+  border-radius: var(--radio);
+}
+
+.logo-img { max-width: 100%; max-height: 150px; display: block; }
+.logo-img[hidden] { display: none; }
+
+.logo-sin {
+  margin: 0;
+  font-size: 15px;
+  color: var(--texto-tenue);
+  text-align: center;
+}
+.logo-sin[hidden] { display: none; }
+
+.logo-controles { display: flex; flex-direction: column; }
+.logo-controles label { font-size: 15px; font-weight: 600; color: var(--texto-suave); margin: 0 0 6px; }
+.logo-controles .boton-secundario { align-self: flex-start; margin-top: 12px; }
+
+.entrada-archivo {
+  padding: 10px 12px;
+  font-size: 16px;
+  background: #FBFCFA;
+}
+
+.entrada-archivo::file-selector-button {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--teal);
+  background: var(--papel);
+  border: 2px solid var(--teal);
+  border-radius: var(--radio);
+  min-height: 34px;
+  padding: 4px 14px;
+  margin-right: 12px;
+  cursor: pointer;
+}
+
+/* ---------- PIN y acciones ---------- */
+.entrada-pin-corta {
+  max-width: 200px;
+  font-size: 22px;
+  letter-spacing: 6px;
+  font-weight: 700;
+}
+
+.casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 16px;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+
+.casilla input { width: 20px; height: 20px; accent-color: var(--teal); }
+
+.botones-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.boton-peligro-suave {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rojo);
+  background: var(--papel);
+  border: 2px solid #E0A9A3;
+  border-radius: var(--radio);
+  min-height: 44px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+.boton-peligro-suave:hover { background: var(--rojo-fondo); }
+.boton-peligro-suave[hidden] { display: none; }
+
+.resultado-accion {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  background: #F4F9E0;
+  border-left: 4px solid var(--verde);
+  border-radius: 0 var(--radio) var(--radio) 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--texto);
+}
+.resultado-accion[hidden] { display: none; }
+
+.resultado-accion.mal {
+  background: var(--rojo-fondo);
+  border-left-color: var(--rojo);
+  color: var(--rojo);
+}
+
+.ruta-carpeta {
+  margin: 0;
+  padding: 10px 12px;
+  background: #F6F7F8;
+  border: 1px solid var(--linea-suave);
+  border-radius: var(--radio);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 16px;
+  color: var(--texto);
+  word-break: break-all;
+  user-select: all;
+}
+
+.version-app {
+  max-width: 980px;
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--texto-tenue);
+}
+
+/* ---------- Barra de guardado ---------- */
+.barra-guardar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  max-width: 980px;
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: 0 -3px 12px rgba(31, 41, 55, .10);
+}
+
+.barra-guardar.sin-guardar { border-color: #D9A441; background: var(--ambar-fondo); }
+
+.barra-guardar-texto {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--texto-suave);
+}
+
+.barra-guardar.sin-guardar .barra-guardar-texto { color: var(--ambar); }
+
+.boton-guardar-config {
+  font-size: 19px;
+  min-height: 52px;
+  width: auto;
+  max-width: none;
+}
+
+/* ============================================================
+   Modal (anulación)
+   ============================================================ */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal[hidden] { display: none; }
+
+.modal-fondo {
+  position: absolute;
+  inset: 0;
+  background: rgba(31, 41, 55, .55);
+}
+
+.modal-caja {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px 26px 22px;
+  background: var(--papel);
+  border-radius: 10px;
+  box-shadow: 0 16px 50px rgba(15, 23, 42, .35);
+}
+
+.modal-titulo {
+  margin: 0 0 4px;
+  font-size: 24px;
+  color: var(--rojo);
+}
+
+.modal-sub {
+  margin: 0 0 14px;
+  font-size: 17px;
+  color: var(--texto-suave);
+}
+
+.modal-aviso {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--rojo-fondo);
+  border: 1px solid #E0A9A3;
+  border-radius: var(--radio);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rojo);
+}
+
+.modal-error {
+  margin: 12px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rojo);
+}
+.modal-error[hidden] { display: none; }
+
+.modal-botones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.boton-peligro {
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: var(--rojo);
+  border: 1px solid #8E1B12;
+  border-radius: var(--radio);
+  min-height: 48px;
+  padding: 6px 22px;
+  cursor: pointer;
+}
+
+.boton-peligro:hover { background: #9B1E14; }
+.boton-peligro:disabled { background: #D3B4B1; border-color: #C9A9A6; cursor: not-allowed; }
+
+/* ============================================================
+   Cerrojo del PIN (§10) — tapa todo hasta que el PIN sea correcto
+   ============================================================ */
+.cerrojo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(160deg, #12564C 0%, #157F6F 55%, #1F8F76 100%);
+}
+.cerrojo[hidden] { display: none; }
+
+.cerrojo-caja {
+  width: 100%;
+  max-width: 420px;
+  padding: 34px 32px 30px;
+  background: var(--papel);
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .35);
+  text-align: center;
+}
+
+.cerrojo-logo {
+  max-width: 210px;
+  max-height: 110px;
+  margin: 0 auto 14px;
+  display: block;
+}
+.cerrojo-logo[hidden] { display: none; }
+
+.cerrojo-marca {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+.cerrojo-titulo {
+  margin: 8px 0 20px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.entrada-pin-grande {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 14px;
+  text-align: center;
+  min-height: 64px;
+  padding: 8px 12px 8px 26px;   /* compensa el tracking del último dígito */
+}
+
+.boton-cerrojo { margin-top: 16px; font-size: 20px; min-height: 56px; }
+
+.cerrojo-error {
+  margin: 16px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--rojo);
+}
+.cerrojo-error[hidden] { display: none; }
+
+/* ============================================================
+   Tutorial de primer uso
+
+   Dos piezas nada más: un recuadro que resalta el elemento del que se
+   está hablando y un globo con el texto. El oscurecido NO es un panel
+   aparte: es la sombra del propio recuadro, extendida 9999 px, así que
+   el recorte y la penumbra siempre coinciden al píxel aunque la ventana
+   cambie de tamaño. Cuando el paso no apunta a nada (la bienvenida y el
+   cierre) se apaga el recuadro y oscurece la capa entera.
+
+   z-index 900: por encima del modal de anulación (500) y por debajo del
+   cerrojo del PIN (1000), que nunca puede quedar tapado.
+   ============================================================ */
+.tutorial {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: transparent;
+}
+.tutorial[hidden] { display: none; }
+
+/* Bienvenida y cierre: sin elemento al que apuntar, se oscurece todo. */
+.tutorial.sin-foco { background: rgba(17, 30, 28, .58); }
+
+.tutorial-foco {
+  position: fixed;
+  border: 4px solid var(--teal);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(17, 30, 28, .58),
+              0 0 0 2px rgba(255, 255, 255, .85) inset;
+  pointer-events: none;                /* el resaltado no roba el clic */
+  /* Sin transición a propósito: el globo salta de un paso al otro al instante
+     y un recuadro que se desliza detrás quedaría media pantalla atrasado. */
+}
+.tutorial-foco[hidden] { display: none; }
+
+.tutorial-globo {
+  position: fixed;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  /* Si el médico achica mucho la ventana, el globo se desplaza por dentro
+     antes que salirse: el texto siempre se puede terminar de leer. */
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  background: var(--papel);
+  border-radius: 10px;
+  padding: 22px 24px 20px;
+  box-shadow: 0 10px 34px rgba(17, 30, 28, .38);
+  text-align: left;
+}
+
+/* Media punta de flecha: un cuadrado girado, del color del globo. La coloca
+   el JS sobre el borde que mira al elemento resaltado, en coordenadas de
+   ventana (es hermana del globo, no hija: adentro la recortaría el scroll). */
+.tutorial-punta {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  background: var(--papel);
+  transform: rotate(45deg);
+}
+.tutorial-punta[hidden] { display: none; }
+
+.tutorial-paso {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+
+.tutorial-titulo {
+  margin: 0 0 10px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--teal);
+}
+
+.tutorial-texto {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--texto);
+}
+
+.tutorial-botones {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* El botón principal de la app ocupa el ancho completo y mide 68 px:
+   acá van dos al lado del otro adentro de un globo. */
+.tutorial-boton {
+  flex: 1 1 0;
+  width: auto;
+  max-width: none;
+  font-size: 18px;
+  min-height: 50px;
+  padding: 8px 14px;
+  box-shadow: none;
+}
+.tutorial-boton:active { transform: translateY(1px); }
+
+.tutorial-saltar {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  background: none;
+  border: none;
+  border-radius: var(--radio);
+  padding: 8px 4px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tutorial-saltar:hover { color: var(--teal); background: var(--teal-claro); }
+
+/* ============================================================
+   Pantallas de la próxima fase
+   ============================================================ */
+.proxima-fase {
+  margin: auto;
+  max-width: 620px;
+  padding: 36px 34px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  text-align: center;
+  align-self: center;
+}
+
+.proxima-fase h2 {
+  margin: 0 0 10px;
+  font-size: 26px;
+  color: var(--teal);
+}
+
+.proxima-fase p { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
+.proxima-fase .chico { font-size: 16px; font-weight: 400; color: var(--texto-suave); }
+
+/* Barras de scroll discretas, de programa de escritorio */
+::-webkit-scrollbar { width: 14px; height: 14px; }
+::-webkit-scrollbar-track { background: #E5E7EB; }
+::-webkit-scrollbar-thumb { background: #B6BCC4; border: 3px solid #E5E7EB; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #9AA2AC; }
