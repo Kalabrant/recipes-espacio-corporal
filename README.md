@@ -6,8 +6,8 @@ Programa para emitir récipes médicos de Espacio Corporal. Funciona sin interne
 
 ## Cómo instalar
 
-1. Entrá a la página de descargas: **{{ENLACE_DESCARGA}}**
-2. Buscá el archivo cuyo nombre **termina en `Setup.exe`** y hacé clic para descargarlo. Es el único que necesitás; los otros archivos de esa página no hacen falta.
+1. Tocá este enlace de descarga directa: **[Descargar Récipes Espacio Corporal](https://github.com/Kalabrant/recipes-espacio-corporal/releases/latest/download/RecipesMedicos-Setup.exe)** (si preferís ver la página de descargas, está [acá](https://github.com/Kalabrant/recipes-espacio-corporal/releases/latest): buscá el archivo que termina en `Setup.exe`).
+2. La descarga es un solo archivo, `RecipesMedicos-Setup.exe`. Es lo único que necesitás.
 3. Cuando termine la descarga, hacé **doble clic** en ese archivo (si no lo encontrás, suele quedar en la carpeta `Descargas`).
 4. **Puede aparecer una pantalla azul de Windows** que dice algo como *"Windows protegió tu PC"*. No es un virus ni un error: aparece porque el programa es nuevo y Windows todavía no lo conoce. Windows avisa así con cualquier programa que no haya visto muchas veces antes.
 
