@@ -3,8 +3,8 @@
 
 Calca el talonario preimpreso: UNA pagina carta apaisada (279,4 x 215,9 mm)
 con dos mitades de media carta vertical (139,7 x 215,9 mm) separadas por la
-linea de corte punteada. Mitad izquierda = `Rp.` (medicamentos), mitad
-derecha = `Ind.` (indicaciones).
+linea de corte punteada. Mitad izquierda = `Rp.` (la que se presenta y a veces
+queda en la farmacia), mitad derecha = `Ind.` (la que conserva el paciente).
 
 Todas las medidas salen de `build/analisis-modelo.md` (Parte A, medidas
 verificadas de nuevo sobre el escaneo renderizado a 200 dpi) y los colores de
@@ -20,7 +20,13 @@ Decisiones del medico que este modulo obedece (no las discutas en codigo):
   1. Los renglones Dr.:/CI:/MPPS: van EN BLANCO (los llena un sello).
   2. Una sola pagina carta apaisada con las dos mitades y la linea de corte.
   3. Sin firma impresa.        4. Sin cedula ni edad del paciente.
-  5. La mitad Ind. lleva las indicaciones por medicamento + un bloque libre.
+  5. Reparto del contenido entre las dos mitades:
+     - Rp.  = SOLO la lista numerada de medicamentos, con su presentacion y la
+       cantidad a despachar. Sin dosis y sin indicaciones: esa mitad se
+       presenta en la farmacia y a veces queda alli.
+     - Ind. = se repite cada medicamento con SU MISMO NUMERO (sin cantidad, que
+       es asunto de la farmacia) y debajo de cada uno van su dosis y sus
+       indicaciones; despues, separado, el bloque de indicaciones generales.
   6. Sin vigencia.             8. El diagnostico NO se imprime.
   7. El codigo unico va arriba a la derecha de CADA mitad.
   9. El ornamento lateral es vectorial (Bezier + degradado), espejado.
@@ -97,8 +103,10 @@ PT_DATO_COMODO = 11.0            # piso hasta donde se achica ANTES de abreviar:
                                  # contra los 3,20 mm del rotulo "Paciente:" que
                                  # tiene al lado, y todavia se lee parejo
 PT_DATO_MIN = 9.5                # piso legible absoluto
-PT_CUERPO = 11.5                 # renglon de medicamento / indicacion
-PT_CUERPO_MENOR = 11.0           # dosis, cantidad, texto general
+PT_CUERPO = 11.5                 # nombre del medicamento (bold), en las DOS mitades
+PT_CUERPO_MENOR = 11.0           # todo lo subordinado: presentacion y cantidad en
+                                 # la mitad Rp., dosis e indicaciones en la Ind.,
+                                 # y el bloque de indicaciones generales
 
 INTERLINEA_MM = 5.0              # entre renglones de un mismo item
 SEPARACION_ITEM_MM = 3.4         # aire extra entre items numerados
@@ -769,20 +777,25 @@ class _Recipe(FPDF):
         return texto + "…", pt, "truncado"
 
     # =====================================================================
-    # CUERPO — mitad Rp.
+    # CUERPO — mitad Rp.  (decision 5: SOLO que despachar, sin dosis)
     # =====================================================================
     def _cuerpo_rp(self, ox: float, items: Sequence[Mapping[str, Any]],
                    dibujar: bool) -> float:
+        """Lista numerada de medicamentos: presentacion y cantidad, nada mas.
+
+        Ni la dosis ni las indicaciones bajan aca: esta mitad se presenta en la
+        farmacia y a veces queda alli, asi que solo dice que hay que despachar.
+        Todo lo que el paciente tiene que leer va en la mitad Ind.
+        """
         x_num = ox + MARGEN_IZQ_MM
         x_txt = x_num + SANGRIA_MM
         x_der = ox + GUIA_DER_MM
         y = CUERPO_Y0_MM + INTERLINEA_MM * 0.72
 
         for i, item in enumerate(items, start=1):
-            medicamento = str(item.get("medicamento", "")).strip()
-            presentacion = str(item.get("presentacion", "")).strip()
-            cantidad = str(item.get("cantidad", "")).strip()
-            dosis = str(item.get("dosis", "")).strip()
+            medicamento = str(item.get("medicamento", "") or "").strip()
+            presentacion = str(item.get("presentacion", "") or "").strip()
+            cantidad = str(item.get("cantidad", "") or "").strip()
 
             ancho_cant = self._ancho(cantidad, "", PT_CUERPO_MENOR) if cantidad else 0.0
             ancho_titulo = (x_der - x_txt) - (ancho_cant + 4.0 if cantidad else 0.0)
@@ -810,11 +823,6 @@ class _Recipe(FPDF):
             if not partes:
                 partes = [("", "B", PT_CUERPO)]
 
-            if dosis:
-                partes += [(t, "", PT_CUERPO_MENOR)
-                           for t in self._envolver(dosis, ancho_libre, "",
-                                                   PT_CUERPO_MENOR)]
-
             for k, (texto, estilo, pt) in enumerate(partes):
                 if k:
                     y += INTERLINEA_MM
@@ -832,30 +840,57 @@ class _Recipe(FPDF):
         return max(usado, 0.0)
 
     # =====================================================================
-    # CUERPO — mitad Ind.
+    # CUERPO — mitad Ind.  (decision 5: todo lo que el paciente tiene que leer)
     # =====================================================================
     def _cuerpo_ind(self, ox: float, items: Sequence[Mapping[str, Any]],
                     generales: str, dibujar: bool) -> float:
+        """Cada medicamento repetido con su numero, y debajo su dosis e indicaciones.
+
+        El numero es el MISMO que en la mitad Rp., asi el paciente empareja las
+        dos mitades de un vistazo. No se repite la cantidad (eso es de la
+        farmacia) ni la presentacion. Un item sin dosis y sin indicaciones se
+        lista igual, solo con su nombre: si el numero existe en el Rp., tiene
+        que existir aca — un hueco en la numeracion se lee como un renglon
+        perdido.
+
+        `y` es siempre la linea de BASE del proximo renglon; al cerrar un bloque
+        avanza una interlinea, de modo que al final `y - CUERPO_Y0_MM` es el
+        alto ocupado (misma convencion que `_cuerpo_rp`).
+        """
         x_num = ox + MARGEN_IZQ_MM
         x_txt = x_num + SANGRIA_MM
         x_der = ox + GUIA_DER_MM
+        ancho_libre = x_der - x_txt
         y = CUERPO_Y0_MM + INTERLINEA_MM * 0.72
         hubo_algo = False
 
         for i, item in enumerate(items, start=1):
-            texto = str(item.get("indicaciones", "") or "").strip()
-            if not texto:
-                continue
-            hubo_algo = True
-            renglones = self._envolver(texto, x_der - x_txt, "", PT_CUERPO)
-            if dibujar:
-                self._texto(x_num, y, f"{i}.", "B", PT_CUERPO, GRIS_DATO)
-                self._texto(x_txt, y, renglones[0], "", PT_CUERPO, GRIS_DATO)
-            for extra in renglones[1:]:
-                y += INTERLINEA_MM
+            medicamento = str(item.get("medicamento", "") or "").strip()
+            presentacion = str(item.get("presentacion", "") or "").strip()
+            dosis = str(item.get("dosis", "") or "").strip()
+            indicaciones = str(item.get("indicaciones", "") or "").strip()
+
+            titulo = medicamento or presentacion
+            partes = [(t, "B", PT_CUERPO)
+                      for t in self._envolver(titulo, ancho_libre, "B", PT_CUERPO)]
+            if not partes:
+                partes = [("", "B", PT_CUERPO)]
+            for detalle in (dosis, indicaciones):
+                if detalle:
+                    partes += [(t, "", PT_CUERPO_MENOR)
+                               for t in self._envolver(detalle, ancho_libre, "",
+                                                       PT_CUERPO_MENOR)]
+
+            for k, (texto, estilo, pt) in enumerate(partes):
+                if k:
+                    y += INTERLINEA_MM
                 if dibujar:
-                    self._texto(x_txt, y, extra, "", PT_CUERPO, GRIS_DATO)
+                    if k == 0:
+                        self._texto(x_num, y, f"{i}.", "B", PT_CUERPO, GRIS_DATO)
+                    self._texto(x_txt, y, texto, estilo, pt, GRIS_DATO)
+
             y += INTERLINEA_MM + SEPARACION_ITEM_MM
+            hubo_algo = True
 
         if hubo_algo:
             y -= SEPARACION_ITEM_MM
@@ -864,8 +899,6 @@ class _Recipe(FPDF):
         if generales:
             if hubo_algo:
                 y += SEPARACION_GENERAL_MM
-            else:
-                y -= INTERLINEA_MM
             renglones = self._envolver(generales, x_der - x_num, "", PT_CUERPO_MENOR)
             for k, renglon in enumerate(renglones):
                 if k:
@@ -875,7 +908,7 @@ class _Recipe(FPDF):
             y += INTERLINEA_MM
             hubo_algo = True
 
-        usado = (y - INTERLINEA_MM - CUERPO_Y0_MM) if hubo_algo else 0.0
+        usado = (y - CUERPO_Y0_MM) if hubo_algo else 0.0
         return max(usado, 0.0)
 
     # =====================================================================
@@ -974,11 +1007,12 @@ def generar_recipe(datos: Mapping[str, Any], ruta_salida: str, *,
         fecha_emision          str|date  '14/08/2026' o '2026-08-14'
         paciente_nombre        str
         items                  list[dict] con:
-            medicamento        str
-            presentacion       str
-            cantidad           str
-            dosis              str
-            indicaciones       str   (puede ir vacia: ese numero no sale en Ind.)
+            medicamento        str   (sale en las DOS mitades, mismo numero)
+            presentacion       str   (solo en la mitad Rp.)
+            cantidad           str   (solo en la mitad Rp.)
+            dosis              str   (solo en la mitad Ind.; puede ir vacia)
+            indicaciones       str   (solo en la mitad Ind.; puede ir vacia —
+                                      el medicamento se lista igual)
         indicaciones_generales str   texto libre al pie de la mitad Ind.
 
     Levanta `ContenidoNoCabeError` si el cuerpo no entra en alguna mitad,
@@ -1042,6 +1076,15 @@ if __name__ == "__main__":
                 "dosis": "1 tableta diaria en la noche por 10 días.",
                 "indicaciones": "Puede dar somnolencia: preferible tomarla antes "
                                 "de dormir.",
+            },
+            {
+                # Caso sin indicaciones propias: en la mitad Ind. tiene que
+                # salir igual, con su numero y su dosis debajo.
+                "medicamento": "Solución salina 0,9 %",
+                "presentacion": "Spray nasal 30 ml",
+                "cantidad": "1 frasco",
+                "dosis": "2 aplicaciones en cada fosa nasal, 3 veces al día.",
+                "indicaciones": "",
             },
         ],
         "indicaciones_generales": (

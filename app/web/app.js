@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    Récipes — Espacio Corporal · Pantalla A (Nuevo récipe)
    JavaScript puro. Sin framework, sin build, sin red externa:
    todas las llamadas son al Flask local (rutas relativas).
@@ -682,7 +682,7 @@ function aplicarMedida(datos, ocultarDetalle) {
   estado.entra = datos.entra !== false;
 
   if (!estado.entra) {
-    let texto = "No caben tantos renglones en la hoja. Quitá medicamentos o acortá las dosis.";
+    let texto = "No caben tantos renglones en la hoja. Quitá medicamentos o acortá las indicaciones.";
     if (datos.nombre_estado === "truncado") {
       texto = "El nombre del paciente no entra en la línea. Acortalo (por ejemplo, dejá un solo apellido).";
     }
@@ -880,7 +880,7 @@ function validar() {
     return false;
   }
   if (!estado.entra) {
-    mostrarError("No caben tantos renglones en la hoja. Quitá medicamentos o acortá las dosis.");
+    mostrarError("No caben tantos renglones en la hoja. Quitá medicamentos o acortá las indicaciones.");
     return false;
   }
   return true;
