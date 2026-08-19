@@ -3,7 +3,7 @@
 ;
 ;   "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" build/instalador.iss
 ;
-; Sale en:  build\salida\RecipesMedicos-Setup-1.0.0.exe
+; Sale en:  build\salida\RecipesMedicos-Setup-2.0.0.exe
 ;
 ; Tres reglas que este archivo hace cumplir:
 ;
@@ -25,7 +25,7 @@
 ; =============================================================================
 
 #define MiNombre       "Récipes Espacio Corporal"
-#define MiVersion      "1.0.1"
+#define MiVersion      "2.0.0"
 #define MiEditor       "Espacio Corporal"
 #define MiEjecutable   "RecipesMedicos.exe"
 #define MiCarpetaDist  "dist\RecipesMedicos"

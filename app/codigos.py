@@ -1,25 +1,36 @@
-"""Generación del código único del récipe (§6 de las instrucciones).
+"""Generación del código único (§6 de las instrucciones, revisado por dec. 1 y 2).
 
-Formato: ``EC-2026-0001`` — prefijo configurable, año de emisión y secuencial
-de cuatro dígitos con ceros a la izquierda.
+Desde la 2.0 el código es **del paciente**, no del récipe:
+
+    ``EC-0001`` — prefijo configurable y secuencial de cuatro dígitos con
+    ceros a la izquierda, **correlativo de por vida y sin año** (dec. 1).
+
+Se asigna al dar de alta al paciente y no cambia nunca. Todos sus récipes
+—y sus informes— salen impresos con ese mismo código (dec. 2); cada récipe
+sigue teniendo su propia fila con su id y su fecha para el historial y la
+anulación, y el Excel lo identifica por código de paciente + fecha.
 
 Reglas que este módulo garantiza y que no hay que romper:
 
-1. El secuencial **reinicia en 0001 cada año**. Lo determina el año de la
-   fecha de emisión, no un contador corrido (§6.1).
-2. Se asigna **al guardar**, dentro de una transacción ``BEGIN IMMEDIATE``
-   que lee y actualiza ``contador_anual`` en la misma operación que inserta
-   el récipe. Un formulario abandonado no quema un número, y dos ventanas
-   abiertas no pueden sacar el mismo código (§6.2 y §6.3).
-3. Los números **no se reciclan**: un récipe anulado conserva su código y ese
-   código no se vuelve a emitir. El contador nunca baja, y además se toma el
-   máximo contra los récipes ya emitidos, así que ni siquiera un contador
+1. El secuencial del paciente **no reinicia nunca**: no depende del año ni de
+   ninguna otra cosa que no sea cuántos pacientes se dieron de alta (dec. 1).
+2. Se asigna dentro de una transacción ``BEGIN IMMEDIATE`` que lee y actualiza
+   ``contador_pacientes`` en la misma operación que inserta el paciente. Dos
+   ventanas abiertas no pueden sacar el mismo código, y un alta que falla no
+   quema un número (§6.2 y §6.3).
+3. Los números **no se reciclan**: el contador nunca baja y además se compara
+   contra el máximo de los códigos ya asignados, así que ni un contador
    perdido o pisado puede devolver un número usado (§6.4).
-4. **Desborde:** pasado 9999 se sigue con cinco dígitos (``EC-2026-10000``)
-   en vez de romper el formato o detenerse (§6.5).
+4. **Desborde:** pasado 9999 se sigue con cinco dígitos (``EC-10000``) en vez
+   de romper el formato o detenerse (§6.5).
 5. El prefijo vive en ``config`` con ``EC`` por defecto. Al cambiarlo, los
-   récipes ya emitidos conservan el prefijo con el que salieron, porque el
-   código se guarda literal en la fila del récipe (§6.6).
+   pacientes y los récipes ya emitidos conservan el prefijo con el que
+   salieron, porque el código se guarda literal en su fila (§6.6).
+
+La numeración vieja por récipe (``EC-2026-0001``, con año y reinicio anual)
+queda como **legado**: ``formatear_codigo``, ``partir_codigo`` y
+``asignar_codigo`` siguen acá para leer y entender los récipes que ya se
+imprimieron con ella, pero ``crear_recipe`` ya no la usa.
 
 Esta es la pieza que no puede fallar: sus tests están en
 ``tests/test_codigos.py``.
@@ -29,7 +40,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping
 
@@ -57,8 +68,13 @@ SECUENCIAL_MAXIMO_CLASICO = 10 ** ANCHO_SECUENCIAL - 1  # 9999
 
 _RE_PREFIJO = re.compile(r"^[A-Za-z0-9]{1,10}$")
 
-#: `EC-2026-0001`, y también `EC-2026-10000` cuando un año desborda.
+#: `EC-2026-0001`, y también `EC-2026-10000` cuando un año desborda (legado).
 _RE_CODIGO = re.compile(r"^(?P<prefijo>[A-Za-z0-9]{1,10})-(?P<anio>\d{4})-(?P<secuencial>\d{4,})$")
+
+#: `EC-0001`, el código del paciente: un solo guion, sin año (dec. 1). Los dos
+#: formatos no se pisan —el viejo tiene dos guiones—, así que se distinguen
+#: mirando el texto y no hace falta saber de dónde salió.
+_RE_CODIGO_PACIENTE = re.compile(r"^(?P<prefijo>[A-Za-z0-9]{1,10})-(?P<secuencial>\d{4,})$")
 
 _RE_FECHA_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
@@ -130,7 +146,10 @@ def formatear_codigo(prefijo: str, anio: int, secuencial: int) -> str:
 
 
 def partir_codigo(codigo: str) -> tuple[str, int, int]:
-    """`"EC-2026-0042"` → `("EC", 2026, 42)`. Falla si el formato no cierra."""
+    """`"EC-2026-0042"` → `("EC", 2026, 42)`. Falla si el formato no cierra.
+
+    Legado: es el código de los récipes que se imprimieron antes de la 2.0.
+    """
     texto = basedatos.limpiar(codigo)
     encontrado = _RE_CODIGO.match(texto)
     if encontrado is None:
@@ -140,6 +159,27 @@ def partir_codigo(codigo: str) -> tuple[str, int, int]:
         int(encontrado["anio"]),
         int(encontrado["secuencial"]),
     )
+
+
+def formatear_codigo_paciente(prefijo: str, secuencial: int) -> str:
+    """Arma `EC-0001`: el código del paciente, sin año (dec. 1)."""
+    return f"{validar_prefijo(prefijo)}-{formatear_secuencial(secuencial)}"
+
+
+def partir_codigo_paciente(codigo: str) -> tuple[str, int]:
+    """`"EC-0042"` → `("EC", 42)`. Falla si el formato no cierra."""
+    texto = basedatos.limpiar(codigo)
+    encontrado = _RE_CODIGO_PACIENTE.match(texto)
+    if encontrado is None:
+        raise ValueError(
+            f"El código de paciente {codigo!r} no tiene el formato PREFIJO-SECUENCIAL."
+        )
+    return encontrado["prefijo"].upper(), int(encontrado["secuencial"])
+
+
+def es_codigo_paciente(codigo: str | None) -> bool:
+    """¿Es un código de paciente (`EC-0001`) y no uno de récipe viejo?"""
+    return _RE_CODIGO_PACIENTE.match(basedatos.limpiar(codigo)) is not None
 
 
 # --------------------------------------------------------------------------
@@ -175,7 +215,102 @@ def anio_de(fecha: str | date | datetime | None = None) -> int:
 
 
 # --------------------------------------------------------------------------
-# Asignación del secuencial
+# Asignación del código del paciente (dec. 1): el correlativo de por vida
+# --------------------------------------------------------------------------
+
+def _ultimo_secuencial_real_paciente(con: sqlite3.Connection) -> int:
+    """El mayor número de paciente que realmente se usó.
+
+    Doble candado, igual que el contador anual (§6.4): se mira el contador y
+    también los códigos ya asignados en `pacientes`, y se toma el mayor. El
+    contador solo sube, pero comparar contra la tabla es lo que garantiza que
+    una base restaurada a medias no devuelva un número que ya está impreso en
+    los récipes de alguien.
+
+    El número se saca del código con SQL —lo que va después del guion— porque
+    el prefijo puede haber cambiado con el tiempo y no sirve para comparar.
+    """
+    fila = con.execute(
+        """
+        SELECT MAX(CAST(SUBSTR(codigo, INSTR(codigo, '-') + 1) AS INTEGER)) AS maximo
+          FROM pacientes
+         WHERE codigo IS NOT NULL AND codigo <> ''
+        """
+    ).fetchone()
+    asignado = int(fila["maximo"] or 0) if fila is not None else 0
+    return max(basedatos.obtener_ultimo_secuencial_paciente(con), asignado)
+
+
+def proximo_secuencial_paciente(con: sqlite3.Connection) -> int:
+    """Qué número de paciente saldría ahora, **sin reservarlo**."""
+    return _ultimo_secuencial_real_paciente(con) + 1
+
+
+def proximo_codigo_paciente(con: sqlite3.Connection, prefijo: str | None = None) -> str:
+    """El código de paciente que saldría ahora, **sin reservarlo**."""
+    prefijo = validar_prefijo(prefijo) if prefijo else obtener_prefijo(con)
+    return formatear_codigo_paciente(prefijo, proximo_secuencial_paciente(con))
+
+
+def asignar_codigo_paciente(
+    con: sqlite3.Connection, prefijo: str | None = None
+) -> tuple[int, str]:
+    """Reserva el próximo número de paciente y devuelve `(secuencial, codigo)`.
+
+    Todo pasa dentro de una transacción ``BEGIN IMMEDIATE``: si quien llama ya
+    abrió la suya —`basedatos.crear_paciente` y `rutas.py` lo hacen— se usa
+    esa, y si no se abre una acá. Ese lock de escritura tomado desde el
+    arranque es lo que hace imposible que dos ventanas lean el mismo contador
+    (§6.3).
+
+    A diferencia de `asignar_codigo` (la numeración vieja del récipe, que
+    exigía la transacción ya abierta porque el número solo tenía sentido junto
+    al insert del récipe), acá el número **es** del paciente: se puede reservar
+    solo, y quien lo pide guarda al paciente en la misma transacción.
+    """
+    prefijo = validar_prefijo(prefijo) if prefijo else obtener_prefijo(con)
+    with basedatos.transaccion_si_hace_falta(con):
+        secuencial = _ultimo_secuencial_real_paciente(con) + 1
+        momento = basedatos.ahora_iso()
+        con.execute(
+            """
+            INSERT INTO contador_pacientes (id, ultimo_secuencial, creado_en, actualizado_en)
+            VALUES (1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                ultimo_secuencial = excluded.ultimo_secuencial,
+                actualizado_en    = excluded.actualizado_en
+            """,
+            (secuencial, momento, momento),
+        )
+        return secuencial, formatear_codigo_paciente(prefijo, secuencial)
+
+
+def asegurar_codigo_paciente(
+    con: sqlite3.Connection, paciente_id: int, prefijo: str | None = None
+) -> str:
+    """El código del paciente, asignándoselo si todavía no tiene.
+
+    Los pacientes que ya estaban recibieron el suyo al migrar, así que en la
+    práctica esto devuelve lo que ya hay. La asignación queda por si aparece
+    un paciente cargado por un camino que no pasó por `crear_paciente`: es
+    preferible darle su número a emitirle un récipe sin código.
+    """
+    with basedatos.transaccion_si_hace_falta(con):
+        fila = basedatos.obtener_paciente(con, paciente_id)
+        if fila is None:
+            raise ValueError(f"No existe el paciente {paciente_id!r}.")
+        codigo = basedatos.limpiar(fila["codigo"])
+        if not codigo:
+            _, codigo = asignar_codigo_paciente(con, prefijo)
+            con.execute(
+                "UPDATE pacientes SET codigo = ?, actualizado_en = ? WHERE id = ?",
+                (codigo, basedatos.ahora_iso(), paciente_id),
+            )
+        return codigo
+
+
+# --------------------------------------------------------------------------
+# Asignación del secuencial del récipe (legado: ver el encabezado del módulo)
 # --------------------------------------------------------------------------
 
 def _ultimo_secuencial_real(con: sqlite3.Connection, anio: int) -> int:
@@ -273,10 +408,12 @@ def _transaccion_si_hace_falta(con: sqlite3.Connection) -> AbstractContextManage
     Permite que `rutas.py` meta el guardado dentro de una transacción más
     grande. Si lo hace, esa transacción tiene que ser inmediata, porque es de
     donde sale la garantía de §6.3.
+
+    Vive en `basedatos` desde la 2.0, porque el alta del paciente necesita lo
+    mismo; se conserva el nombre acá para no cambiarle el módulo a quien ya lo
+    usaba.
     """
-    if con.in_transaction:
-        return nullcontext(con)
-    return basedatos.transaccion(con, inmediata=True)
+    return basedatos.transaccion_si_hace_falta(con)
 
 
 def crear_recipe(
@@ -290,14 +427,20 @@ def crear_recipe(
     prefijo: str | None = None,
     aprender: bool = True,
     registrar_paciente: bool = True,
+    consulta_id: int | None = None,
 ) -> dict[str, Any]:
     """Guarda un récipe completo y devuelve su fila como dict (con `codigo`).
 
+    El `codigo` que devuelve —y que se imprime— es **el del paciente** (dec. 2):
+    el récipe ya no saca número propio. Si el paciente todavía no tuviera el
+    suyo, se le asigna acá mismo. `anio` y `secuencial` quedan en NULL: son
+    columnas de legado, con valor solo en los récipes anteriores a la 2.0.
+
     Todo pasa dentro de una sola transacción `BEGIN IMMEDIATE` (§6.3): se
-    reserva el secuencial del año, se inserta el encabezado, se copian los
+    resuelve el código del paciente, se inserta el encabezado, se copian los
     renglones **literales** (§5), se suma la atención del paciente y se
     aprenden los términos para el autocompletado (§8). Si algo falla, no
-    queda ni el récipe ni el número quemado.
+    queda ni el récipe ni un código de paciente quemado.
 
     `items` es una lista de diccionarios con las claves `medicamento`,
     `presentacion`, `cantidad`, `dosis` e `indicaciones`. Hace falta al menos
@@ -306,20 +449,23 @@ def crear_recipe(
     `indicaciones_generales` es opcional: es el texto libre del récipe entero
     que va en la mitad `Ind.` del modelo, aparte de las indicaciones de cada
     medicamento. Sin él, el récipe se guarda igual y la columna queda en NULL.
+
+    `consulta_id` también es opcional: cuelga el récipe de la visita en la que
+    se emitió, para que aparezca en la línea de tiempo de la historia. El
+    flujo de siempre —emitir un récipe suelto, sin historia— lo deja en NULL.
     """
     renglones = _limpiar_items(items)
     if not renglones:
         raise ValueError("El récipe necesita al menos un medicamento.")
 
     fecha = normalizar_fecha(fecha_emision)
-    anio = int(fecha[:4])
     diagnostico = basedatos.limpiar(diagnostico)
     notas = basedatos.limpiar(notas)
     # Multilínea: es texto libre y cada renglón es una instrucción aparte.
     indicaciones_generales = basedatos.limpiar_multilinea(indicaciones_generales)
 
     with _transaccion_si_hace_falta(con):
-        secuencial, codigo = asignar_codigo(con, anio, prefijo)
+        codigo = asegurar_codigo_paciente(con, paciente_id, prefijo)
         momento = basedatos.ahora_iso()
         cur = con.execute(
             """
@@ -327,13 +473,13 @@ def crear_recipe(
                                  diagnostico, notas, indicaciones_generales,
                                  ruta_pdf, anulado,
                                  motivo_anulacion, fecha_anulacion,
-                                 creado_en, actualizado_en)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?)
+                                 creado_en, actualizado_en, consulta_id)
+            VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?, ?)
             """,
             (
-                codigo, anio, secuencial, paciente_id, fecha,
+                codigo, paciente_id, fecha,
                 diagnostico or None, notas or None,
-                indicaciones_generales or None, momento, momento,
+                indicaciones_generales or None, momento, momento, consulta_id,
             ),
         )
         recipe_id = int(cur.lastrowid)

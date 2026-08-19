@@ -13,11 +13,17 @@
     <span class="marca-nombre">Récipes</span>
     <span class="marca-sub">Espacio Corporal</span>
   </div>
+  <!-- El orden manda: la Historia clínica va primera y es la que se abre al
+       arrancar (dec. 18). El récipe se emite desde la historia del paciente;
+       escribir el nombre a mano en «Nuevo récipe» sigue funcionando, pero ya
+       no es el camino principal. -->
   <nav class="pestanas" role="tablist" aria-label="Secciones">
-    <button type="button" class="pestana activa" role="tab" id="tab-nuevo"
-            aria-selected="true" aria-controls="panel-nuevo" data-panel="panel-nuevo">Nuevo récipe</button>
+    <button type="button" class="pestana activa" role="tab" id="tab-historia"
+            aria-selected="true" aria-controls="panel-historia" data-panel="panel-historia">Historia clínica</button>
+    <button type="button" class="pestana" role="tab" id="tab-nuevo"
+            aria-selected="false" aria-controls="panel-nuevo" data-panel="panel-nuevo">Nuevo récipe</button>
     <button type="button" class="pestana" role="tab" id="tab-historial"
-            aria-selected="false" aria-controls="panel-historial" data-panel="panel-historial">Historial</button>
+            aria-selected="false" aria-controls="panel-historial" data-panel="panel-historial">Récipes emitidos</button>
     <button type="button" class="pestana" role="tab" id="tab-config"
             aria-selected="false" aria-controls="panel-config" data-panel="panel-config">Configuración</button>
   </nav>
@@ -25,16 +31,26 @@
 
 <main>
 
-  <!-- ══════════ PANEL A · NUEVO RÉCIPE ══════════ -->
-  <section class="panel" id="panel-nuevo" role="tabpanel" aria-labelledby="tab-nuevo">
+  <!-- ══════════ PANEL A · NUEVO RÉCIPE ══════════
+       Arranca oculto: la pestaña que se abre al iniciar es la Historia
+       clínica (dec. 18). El orden de los paneles en el archivo no cambió
+       —solo se ve el que la pestaña activa manda—. -->
+  <section class="panel" id="panel-nuevo" role="tabpanel" aria-labelledby="tab-nuevo" hidden>
 
     <div class="trabajo">
 
       <!-- ── Columna izquierda: el formulario ── -->
       <div class="columna-form" id="columna-form">
 
+        <!-- Con una historia abierta, el récipe arranca con ESE paciente
+             puesto. La banda es la evidencia: nunca en silencio (dec. 18). -->
+        <div class="banda-paciente" id="banda-paciente" hidden>
+          <p class="banda-paciente-texto" id="banda-paciente-texto"></p>
+          <button type="button" class="boton-secundario" id="banda-cambiar">Cambiar de paciente</button>
+        </div>
+
         <div class="exito" id="exito" role="status" hidden>
-          <p class="exito-codigo" id="exito-codigo">EC-0000-0000</p>
+          <p class="exito-codigo" id="exito-codigo">EC-0000</p>
           <p class="exito-texto" id="exito-texto">Récipe guardado. Se abrió para imprimir.</p>
           <button type="button" class="boton-secundario" id="btn-cerrar-exito">Entendido</button>
         </div>
@@ -55,7 +71,8 @@
                        placeholder="Escribí el nombre">
                 <ul class="sugerencias" id="lista-pac-nombre" role="listbox" hidden></ul>
               </div>
-              <p class="hint">Si el paciente no existe, se crea con lo que escribas.</p>
+              <p class="hint">Si el paciente no existe, se crea con lo que escribas. Para
+                abrirle la historia, la ficha o un informe, entrá por «Historia clínica».</p>
             </div>
 
             <div class="campo campo-cedula">
@@ -120,7 +137,8 @@
         <!-- Botón único -->
         <div class="zona-guardar">
           <button type="button" class="boton-principal" id="btn-guardar">Guardar e imprimir</button>
-          <p class="hint hint-guardar">Asigna el código, guarda el récipe, genera el PDF y lo abre para imprimir.</p>
+          <p class="hint hint-guardar">Guarda el récipe, genera el PDF y lo abre para imprimir. Si el
+            paciente es nuevo, le asigna su código.</p>
         </div>
 
       </div>
@@ -138,8 +156,8 @@
           <iframe id="previa-iframe" title="Vista previa del récipe en PDF" hidden></iframe>
           <div class="previa-vacia" id="previa-vacia">
             <p>Acá vas a ver la hoja tal cual sale impresa.</p>
-            <p class="chico">El número todavía no se asigna: sale
-              <strong id="relleno-codigo">EC-____-____</strong> hasta que guardes.</p>
+            <p class="chico">Si el paciente ya está registrado sale su código; si es nuevo,
+              dice <strong id="relleno-codigo">EC-____</strong> hasta que guardes.</p>
           </div>
         </div>
       </aside>
@@ -147,7 +165,761 @@
     </div>
   </section>
 
-  <!-- ══════════ PANEL B · HISTORIAL ══════════ -->
+  <!-- ══════════ PANEL B · HISTORIA CLÍNICA ══════════
+       Una sola columna que scrollea: el médico la recorre de arriba abajo
+       —paciente, ficha, consultas, anexos, evolución— y cada sección guarda
+       lo suyo con su propio botón. Nada de esta pantalla se imprime en el
+       récipe; lo que se imprime es el PDF de la historia (dec. 14). -->
+  <section class="panel" id="panel-historia" role="tabpanel" aria-labelledby="tab-historia">
+    <div class="columna-historia" id="columna-historia">
+
+      <!-- ── 1 · Paciente ── -->
+      <section class="bloque bloque-config" aria-labelledby="hc-t-paciente">
+        <h2 class="titulo-config" id="hc-t-paciente">Paciente</h2>
+
+        <div class="campo">
+          <label class="etiqueta-grande" for="hc-buscar">Buscá por nombre o cédula</label>
+          <div class="caja-sugerible">
+            <input type="text" id="hc-buscar" class="entrada entrada-buscador" autocomplete="off"
+                   spellcheck="false" role="combobox" aria-expanded="false"
+                   aria-autocomplete="list" aria-controls="lista-hc-buscar"
+                   placeholder="Pérez, 7856151…">
+            <ul class="sugerencias" id="lista-hc-buscar" role="listbox" hidden></ul>
+          </div>
+          <p class="hint">Elegí uno de la lista con las flechas y Enter, o con el mouse.
+            Si el paciente no aparece, la lista termina en «➕ Crear paciente nuevo».</p>
+        </div>
+
+        <!-- ── Alta de un paciente nuevo, sin salir de la Historia (dec. 18) ──
+             Se despliega acá mismo cuando el médico elige «Crear paciente
+             nuevo» en la lista de sugerencias, con el nombre ya escrito. Lo
+             único obligatorio es el nombre: el resto se completa después, en
+             la ficha, sin que nada frene el alta. -->
+        <div class="tarjeta-alta" id="hc-alta" hidden>
+          <div class="titulo-fila">
+            <h3 class="subtitulo-historia">Paciente nuevo</h3>
+            <button type="button" class="boton-secundario boton-chico" id="hc-alta-cancelar">Cancelar</button>
+          </div>
+          <p class="nota-config">Lo único obligatorio es el nombre. La cédula, la edad y el
+            teléfono se pueden completar después, en la ficha. Al crearlo se le asigna su
+            código y su carpeta, y se abre su historia vacía.</p>
+
+          <div class="fila fila-alta">
+            <div class="campo campo-ancho">
+              <label for="hc-alta-nombre">Nombre y apellido</label>
+              <input type="text" id="hc-alta-nombre" class="entrada" autocomplete="off"
+                     spellcheck="false" placeholder="GALUÉ Mónica">
+            </div>
+            <div class="campo">
+              <label for="hc-alta-cedula">Cédula</label>
+              <input type="text" id="hc-alta-cedula" class="entrada" autocomplete="off"
+                     spellcheck="false" placeholder="Puede quedar vacía">
+            </div>
+            <div class="campo">
+              <label for="hc-alta-edad">Edad</label>
+              <input type="text" id="hc-alta-edad" class="entrada" autocomplete="off"
+                     inputmode="numeric" spellcheck="false" placeholder="Años">
+            </div>
+          </div>
+
+          <div class="fila fila-alta-2">
+            <div class="campo">
+              <label for="hc-alta-nacimiento">Fecha de nacimiento</label>
+              <input type="date" id="hc-alta-nacimiento" class="entrada">
+              <p class="hint">Si la ponés, la edad se calcula sola.</p>
+            </div>
+            <div class="campo">
+              <label for="hc-alta-sexo">Sexo</label>
+              <select id="hc-alta-sexo" class="entrada">
+                <option value="">Sin especificar</option>
+                <option value="Femenino">Femenino</option>
+                <option value="Masculino">Masculino</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="hc-alta-telefono">Teléfono</label>
+              <input type="text" id="hc-alta-telefono" class="entrada" autocomplete="off"
+                     inputmode="tel" placeholder="0414…">
+            </div>
+          </div>
+
+          <p class="modal-error" id="hc-alta-error" role="alert" hidden></p>
+
+          <div class="botones-config">
+            <button type="button" class="boton-principal" id="hc-alta-crear">
+              Crear paciente y abrir su historia
+            </button>
+          </div>
+        </div>
+
+        <div class="ficha-cabecera" id="hc-cabecera" hidden>
+          <p class="ficha-codigo" id="hc-codigo">EC-____</p>
+          <div class="ficha-identidad">
+            <p class="ficha-nombre" id="hc-nombre"></p>
+            <p class="ficha-linea" id="hc-linea"></p>
+          </div>
+          <!-- Desde la historia salen el récipe y el informe (dec. 18): los dos
+               arrancan con este paciente puesto, sin volver a escribir nada. -->
+          <div class="ficha-acciones">
+            <button type="button" class="boton-secundario boton-directo" id="hc-nuevo-recipe">
+              Nuevo récipe para este paciente
+            </button>
+            <button type="button" class="boton-secundario boton-directo" id="hc-ir-informe">
+              Nuevo informe
+            </button>
+            <button type="button" class="boton-secundario" id="hc-imprimir">Imprimir historia</button>
+            <button type="button" class="boton-secundario" id="hc-otro">Buscar otro paciente</button>
+          </div>
+        </div>
+
+        <p class="ficha-alergias" id="hc-alergias" role="status" hidden></p>
+      </section>
+
+      <div class="error-global" id="hc-error" role="alert" hidden></div>
+      <div class="aviso-ok" id="hc-aviso" role="status" hidden></div>
+
+      <!-- Sin paciente elegido -->
+      <div class="hc-invitacion" id="hc-invitacion">
+        <h2>Elegí un paciente para ver su historia</h2>
+        <p>Escribí el nombre o la cédula ahí arriba y tocá el que corresponda.</p>
+        <p class="chico">¿Viene por primera vez? Escribí su nombre y elegí
+          «➕ Crear paciente nuevo» al pie de la lista: se le asigna su código EC-… y su
+          carpeta, y su historia queda abierta para empezar. Desde acá salen después el
+          récipe y el informe.</p>
+        <button type="button" class="boton-secundario" id="hc-crear-nuevo">Crear un paciente nuevo</button>
+      </div>
+
+      <!-- La historia imprimible (dec. 14): se arma al vuelo, no se guarda copia -->
+      <section class="bloque bloque-config" id="hc-pdf" hidden aria-labelledby="hc-t-pdf">
+        <div class="titulo-fila">
+          <h2 class="titulo-config" id="hc-t-pdf">Historia para imprimir</h2>
+          <button type="button" class="boton-secundario" id="hc-pdf-cerrar">Cerrar</button>
+        </div>
+        <p class="nota-config">Imprimí desde el visor. Este PDF se arma en el momento con
+          lo que hay hoy en la historia: no se guarda ninguna copia.</p>
+        <div class="previa-marco marco-historia">
+          <iframe id="hc-pdf-iframe" title="Historia clínica en PDF"></iframe>
+        </div>
+      </section>
+
+      <div id="hc-contenido" hidden>
+
+        <!-- ── 2 · Guía de la medición de WhatsApp (dec. 15) ──
+             Solo aparece cuando el paciente todavía no tiene historia. Es una
+             tarjeta grande y saltable, nunca un modal: si no hay imagen, el
+             médico sigue de largo con un botón. -->
+        <section class="tarjeta-guia" id="hc-guia" hidden aria-labelledby="hc-t-guia">
+          <h2 class="guia-titulo" id="hc-t-guia">¿Te llegó la medición por WhatsApp?</h2>
+          <p class="guia-sub">Esta historia es nueva. Si tenés la imagen del informe de la
+            báscula, anexala ahora en tres pasos. Si no la tenés, seguí sin ella.</p>
+
+          <ol class="guia-pasos">
+            <li>
+              <span class="guia-numero">1</span>
+              <span class="guia-texto">Abrí <strong>WhatsApp en esta computadora</strong> y
+                tocá la imagen del informe.</span>
+            </li>
+            <li>
+              <span class="guia-numero">2</span>
+              <span class="guia-texto">Tocá el botón de descargar: la flecha
+                para abajo <strong class="guia-flecha">↓</strong></span>
+            </li>
+            <li>
+              <span class="guia-numero">3</span>
+              <span class="guia-texto">Volvé acá: la imagen va a aparecer abajo.
+                <strong>Tocala y listo.</strong></span>
+            </li>
+          </ol>
+
+          <div class="bandeja" id="hc-bandeja-guia" data-bandeja></div>
+
+          <div class="guia-botones">
+            <button type="button" class="boton-secundario" data-bandeja-actualizar>Actualizar</button>
+            <button type="button" class="boton-secundario" data-adjuntar-carpeta>Adjuntar desde una carpeta…</button>
+            <button type="button" class="boton-principal boton-saltar-guia" id="hc-guia-saltar">
+              Ahora no — seguir sin imagen
+            </button>
+          </div>
+        </section>
+
+        <!-- ── 3 · Ficha y antecedentes (se llena una vez, dec. 3 a 6) ── -->
+        <section class="bloque bloque-config" aria-labelledby="hc-t-ficha">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-ficha">Ficha y antecedentes</h2>
+            <p class="nota-guardado" id="hc-ficha-estado" role="status" hidden></p>
+          </div>
+          <p class="nota-config">Esto se llena una sola vez y queda. Corregilo cuando haga
+            falta: lo que cambia en cada visita —motivo, signos vitales, evolución— va
+            abajo, en Consultas.</p>
+
+          <h3 class="subtitulo-historia">Datos de la ficha</h3>
+          <div class="fila fila-config-3">
+            <div class="campo">
+              <label for="hc-estado-civil">Estado civil</label>
+              <input type="text" id="hc-estado-civil" class="entrada" autocomplete="off"
+                     data-historia="estado_civil" placeholder="Casada, soltero…">
+            </div>
+            <div class="campo">
+              <label for="hc-ocupacion">Ocupación</label>
+              <input type="text" id="hc-ocupacion" class="entrada" autocomplete="off"
+                     data-historia="ocupacion" placeholder="Docente">
+            </div>
+            <div class="campo">
+              <label for="hc-tipo-sangre">Tipo de sangre (opcional)</label>
+              <input type="text" id="hc-tipo-sangre" class="entrada entrada-corta-media"
+                     autocomplete="off" data-historia="tipo_sangre" placeholder="O+">
+            </div>
+          </div>
+
+          <h3 class="subtitulo-historia">Antecedentes familiares</h3>
+          <div class="fila fila-config-2">
+            <div class="campo">
+              <label for="hc-fam-madre">Madre</label>
+              <textarea id="hc-fam-madre" class="entrada area area-chica" rows="2"
+                        data-historia="fam_madre"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-fam-padre">Padre</label>
+              <textarea id="hc-fam-padre" class="entrada area area-chica" rows="2"
+                        data-historia="fam_padre"></textarea>
+            </div>
+          </div>
+          <div class="fila fila-config-2">
+            <div class="campo">
+              <label for="hc-fam-hermanos">Hermanos</label>
+              <textarea id="hc-fam-hermanos" class="entrada area area-chica" rows="2"
+                        data-historia="fam_hermanos"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-fam-hijos">Hijos</label>
+              <textarea id="hc-fam-hijos" class="entrada area area-chica" rows="2"
+                        data-historia="fam_hijos"></textarea>
+            </div>
+          </div>
+
+          <h3 class="subtitulo-historia">Alimentación</h3>
+          <p class="hint">Como en el papel: vos ponés el número de arriba, el de abajo ya está impreso.</p>
+          <div class="grilla-alimentacion">
+            <div class="alim-campo">
+              <label for="hc-alim-comidas">Comidas al día</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-comidas" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_comidas_dia">
+                <span class="alim-denominador" data-denominador-de="alim_comidas_dia">/3</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-frutas">Frutas y verduras</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-frutas" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_frutas_verduras">
+                <span class="alim-denominador" data-denominador-de="alim_frutas_verduras">/7</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-pollo">Pollo</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-pollo" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_pollo">
+                <span class="alim-denominador" data-denominador-de="alim_pollo">/7</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-pescado">Pescado</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-pescado" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_pescado">
+                <span class="alim-denominador" data-denominador-de="alim_pescado">/7</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-carnes">Carnes rojas</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-carnes" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_carnes_rojas">
+                <span class="alim-denominador" data-denominador-de="alim_carnes_rojas">/7</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-carbo">Carbohidratos y lípidos</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-carbo" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_carbohidratos">
+                <span class="alim-denominador" data-denominador-de="alim_carbohidratos">/7</span>
+              </div>
+            </div>
+            <div class="alim-campo">
+              <label for="hc-alim-agua">Litros de agua al día</label>
+              <div class="alim-fraccion">
+                <input type="text" id="hc-alim-agua" class="entrada entrada-numerito"
+                       inputmode="numeric" autocomplete="off" data-alimentacion="alim_litros_agua">
+                <span class="alim-denominador" data-denominador-de="alim_litros_agua">/2</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="hc-alim-notas">Notas de alimentación</label>
+            <textarea id="hc-alim-notas" class="entrada area area-chica" rows="2"
+                      data-historia="alimentacion_notas"
+                      placeholder="Café, alcohol, suplementos, lo que quieras aclarar."></textarea>
+          </div>
+
+          <h3 class="subtitulo-historia">Vivienda y actividad física</h3>
+          <div class="fila fila-config-2">
+            <div class="campo">
+              <label for="hc-habitacion">Habitación (vivienda)</label>
+              <textarea id="hc-habitacion" class="entrada area area-chica" rows="3"
+                        data-historia="habitacion"
+                        placeholder="Casa propia, servicios, con quién vive… escribilo como te salga."></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-actividad">Actividad física</label>
+              <textarea id="hc-actividad" class="entrada area area-chica" rows="3"
+                        data-historia="actividad_fisica"
+                        placeholder="Caminata 3 veces por semana."></textarea>
+            </div>
+          </div>
+
+          <h3 class="subtitulo-historia">Antecedentes patológicos</h3>
+
+          <div class="campo campo-alergias">
+            <label for="hc-alergias-campo">Alergias</label>
+            <textarea id="hc-alergias-campo" class="entrada area area-chica entrada-alergias" rows="2"
+                      data-historia="alergias"
+                      placeholder="Penicilina, AINES… Si no tiene, escribí «niega»."></textarea>
+            <p class="hint hint-alergias">Es lo único de la historia que puede hacer daño si no
+              se ve: sale destacado arriba, junto al nombre.</p>
+          </div>
+
+          <div class="campo">
+            <label for="hc-cronicos">Crónico-degenerativos</label>
+            <textarea id="hc-cronicos" class="entrada area area-chica" rows="3"
+                      data-historia="cronico_degenerativos"
+                      placeholder="HTA, DM2, dislipidemia, COVID…"></textarea>
+          </div>
+
+          <div class="fila fila-config-3">
+            <div class="campo">
+              <label for="hc-alcoholismo">Alcoholismo</label>
+              <textarea id="hc-alcoholismo" class="entrada area area-chica" rows="2"
+                        data-historia="alcoholismo"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-tabaquismo">Tabaquismo</label>
+              <textarea id="hc-tabaquismo" class="entrada area area-chica" rows="2"
+                        data-historia="tabaquismo"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-toxicomanias">Toxicomanías</label>
+              <textarea id="hc-toxicomanias" class="entrada area area-chica" rows="2"
+                        data-historia="toxicomanias"></textarea>
+            </div>
+          </div>
+
+          <div class="fila fila-config-2">
+            <div class="campo">
+              <label for="hc-quirurgicos">Quirúrgicos</label>
+              <textarea id="hc-quirurgicos" class="entrada area area-chica" rows="2"
+                        data-historia="quirurgicos"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-traumaticos">Traumáticos</label>
+              <textarea id="hc-traumaticos" class="entrada area area-chica" rows="2"
+                        data-historia="traumaticos"></textarea>
+            </div>
+          </div>
+
+          <div class="fila fila-config-3">
+            <div class="campo">
+              <label for="hc-ginecologicos">Ginecológicos</label>
+              <textarea id="hc-ginecologicos" class="entrada area area-chica" rows="2"
+                        data-historia="ginecologicos"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-hospitalizaciones">Hospitalizaciones previas</label>
+              <textarea id="hc-hospitalizaciones" class="entrada area area-chica" rows="2"
+                        data-historia="hospitalizaciones"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-transfusiones">Transfusiones</label>
+              <textarea id="hc-transfusiones" class="entrada area area-chica" rows="2"
+                        data-historia="transfusiones"></textarea>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="hc-notas">Notas generales</label>
+            <textarea id="hc-notas" class="entrada area area-chica" rows="2"
+                      data-historia="notas_generales"></textarea>
+          </div>
+
+          <p class="modal-error" id="hc-ficha-error" role="alert" hidden></p>
+
+          <div class="botones-config">
+            <button type="button" class="boton-principal" id="hc-guardar-ficha">
+              Guardar ficha y antecedentes
+            </button>
+          </div>
+        </section>
+
+        <!-- ── 4 · Consultas ── -->
+        <section class="bloque bloque-config" aria-labelledby="hc-t-consultas">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-consultas">Consultas</h2>
+            <button type="button" class="boton-principal boton-nueva-consulta" id="hc-nueva-consulta">
+              + Nueva consulta
+            </button>
+          </div>
+
+          <div class="form-consulta" id="hc-form-consulta" hidden>
+            <h3 class="subtitulo-historia" id="hc-form-titulo">Consulta de hoy</h3>
+
+            <div class="fila fila-consulta-arriba">
+              <div class="campo">
+                <label for="hc-c-fecha">Fecha</label>
+                <input type="date" id="hc-c-fecha" class="entrada">
+              </div>
+              <div class="campo campo-ancho">
+                <label for="hc-c-motivo">Motivo de la consulta</label>
+                <input type="text" id="hc-c-motivo" class="entrada" autocomplete="off"
+                       placeholder="Control de peso">
+              </div>
+            </div>
+
+            <fieldset class="bloque-vitales">
+              <legend class="bloque-titulo">Signos vitales</legend>
+              <div class="grilla-vitales">
+                <div class="campo campo-ta">
+                  <label for="hc-c-tas">T.A. (mmHg)</label>
+                  <div class="par-ta">
+                    <input type="text" id="hc-c-tas" class="entrada entrada-numerito"
+                           inputmode="numeric" autocomplete="off" placeholder="120"
+                           aria-label="Tensión sistólica">
+                    <span class="ta-barra" aria-hidden="true">/</span>
+                    <input type="text" id="hc-c-tad" class="entrada entrada-numerito"
+                           inputmode="numeric" autocomplete="off" placeholder="80"
+                           aria-label="Tensión diastólica">
+                  </div>
+                </div>
+                <div class="campo">
+                  <label for="hc-c-fc">F.C. (lpm)</label>
+                  <input type="text" id="hc-c-fc" class="entrada entrada-numerito"
+                         inputmode="numeric" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="hc-c-fr">F.R. (rpm)</label>
+                  <input type="text" id="hc-c-fr" class="entrada entrada-numerito"
+                         inputmode="numeric" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="hc-c-temp">Temp. (°C)</label>
+                  <input type="text" id="hc-c-temp" class="entrada entrada-numerito"
+                         inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="hc-c-spo2">SpO₂ (%)</label>
+                  <input type="text" id="hc-c-spo2" class="entrada entrada-numerito"
+                         inputmode="numeric" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="hc-c-peso">Peso (kg)</label>
+                  <input type="text" id="hc-c-peso" class="entrada entrada-numerito"
+                         inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="hc-c-talla">Talla (m)</label>
+                  <input type="text" id="hc-c-talla" class="entrada entrada-numerito"
+                         inputmode="decimal" autocomplete="off" placeholder="1,68">
+                </div>
+                <div class="campo campo-calculado">
+                  <span class="etiqueta-suelta">IMC</span>
+                  <p class="valor-calculado" id="hc-c-imc">—</p>
+                </div>
+                <div class="campo campo-calculado">
+                  <span class="etiqueta-suelta">TAM</span>
+                  <p class="valor-calculado" id="hc-c-tam">—</p>
+                </div>
+              </div>
+              <p class="hint" id="hc-c-pistas">La talla podés escribirla 1,68 o 168: se guarda en
+                metros. El IMC y la TAM se calculan solos.</p>
+            </fieldset>
+
+            <div class="campo">
+              <label for="hc-c-examen">Examen físico</label>
+              <textarea id="hc-c-examen" class="entrada area" rows="3"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-c-evolucion">Evolución</label>
+              <textarea id="hc-c-evolucion" class="entrada area" rows="4"></textarea>
+            </div>
+            <div class="campo">
+              <label for="hc-c-diagnostico">Diagnóstico</label>
+              <div class="caja-sugerible">
+                <input type="text" id="hc-c-diagnostico" class="entrada" autocomplete="off"
+                       role="combobox" aria-expanded="false" aria-autocomplete="list"
+                       aria-controls="lista-hc-diagnostico" placeholder="Escribí el diagnóstico">
+                <ul class="sugerencias" id="lista-hc-diagnostico" role="listbox" hidden></ul>
+              </div>
+            </div>
+            <div class="campo">
+              <label for="hc-c-plan">Plan</label>
+              <textarea id="hc-c-plan" class="entrada area" rows="3"></textarea>
+            </div>
+
+            <p class="modal-error" id="hc-c-error" role="alert" hidden></p>
+
+            <div class="botones-config">
+              <button type="button" class="boton-principal" id="hc-c-guardar">Guardar consulta</button>
+              <button type="button" class="boton-secundario" id="hc-c-cancelar">Cancelar</button>
+            </div>
+          </div>
+
+          <div id="hc-lista-consultas" class="lista-consultas"></div>
+          <p class="tabla-vacia" id="hc-consultas-vacio" hidden>
+            Todavía no hay consultas de este paciente. Tocá «Nueva consulta».
+          </p>
+        </section>
+
+        <!-- ── 5 · Anexos (dec. 11 y 13) ── -->
+        <section class="bloque bloque-config" aria-labelledby="hc-t-anexos">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-anexos">Anexos</h2>
+            <div class="botones-config botones-anexos">
+              <button type="button" class="boton-secundario" data-bandeja-actualizar>Actualizar</button>
+              <button type="button" class="boton-secundario" data-adjuntar-carpeta>Adjuntar desde una carpeta…</button>
+            </div>
+          </div>
+          <p class="nota-config">El archivo original no se toca nunca: la app se queda con una
+            copia dentro de la carpeta del paciente.</p>
+
+          <div class="bandeja" id="hc-bandeja-anexos" data-bandeja></div>
+
+          <h3 class="subtitulo-historia">Anexos guardados</h3>
+          <div class="grilla-anexos" id="hc-grilla-anexos"></div>
+          <p class="tabla-vacia" id="hc-anexos-vacio" hidden>
+            Todavía no hay imágenes anexadas a esta historia.
+          </p>
+        </section>
+
+        <!-- ── 6 · Informes (dec. 10 y 12) ──
+             Va después de Anexos y antes de Evolución porque el informe se
+             sirve de todo lo que está arriba: los antecedentes de la ficha
+             arman la frase inicial, la consulta del día pone el motivo, los
+             anexos son las páginas que se le pegan al final y el último
+             récipe llena el tratamiento. Cuando el médico llega acá ya tiene
+             todo cargado; Evolución, que es solo de mirar, cierra la pantalla.
+        -->
+        <section class="bloque bloque-config" id="hc-informes" aria-labelledby="hc-t-informes">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-informes">Informes</h2>
+            <button type="button" class="boton-principal boton-nuevo-informe" id="hc-nuevo-informe">
+              + Nuevo informe
+            </button>
+          </div>
+          <p class="nota-config">El informe sale firmado y queda guardado en la historia:
+            se puede volver a imprimir cuando el paciente lo pida.</p>
+
+          <!-- Éxito grande, con el mismo tono que el del récipe -->
+          <div class="exito exito-informe" id="hc-inf-exito" role="status" hidden>
+            <p class="exito-codigo">Informe generado.</p>
+            <p class="exito-texto">Se abrió para imprimir.</p>
+            <div class="botones-config">
+              <button type="button" class="boton-secundario" id="hc-inf-exito-ver">Verlo acá</button>
+              <button type="button" class="boton-secundario" id="hc-inf-exito-cerrar">Entendido</button>
+            </div>
+          </div>
+
+          <div class="error-global" id="hc-inf-error-lista" role="alert" hidden></div>
+
+          <!-- ── Formulario del informe nuevo (en la pantalla, no en un modal:
+                  es largo y el médico necesita ver la historia mientras lo
+                  escribe) ── -->
+          <div class="form-consulta form-informe" id="hc-form-informe" hidden>
+            <h3 class="subtitulo-historia" id="hc-inf-titulo">Informe nuevo</h3>
+
+            <fieldset class="bloque-vitales bloque-tipos">
+              <legend class="bloque-titulo">¿Cuál de los dos necesitás?</legend>
+              <div class="grilla-tipos">
+                <label class="tipo-informe" for="hc-inf-tipo-clinico">
+                  <input type="radio" name="hc-inf-tipo" value="clinico" id="hc-inf-tipo-clinico" checked>
+                  <span class="tipo-nombre">Informe médico</span>
+                  <span class="tipo-para">El del día a día: una carta en prosa, firmada, para el
+                    paciente, otro colega, un laboratorio o una empresa.</span>
+                </label>
+                <label class="tipo-informe" for="hc-inf-tipo-aseguradora">
+                  <input type="radio" name="hc-inf-tipo" value="aseguradora" id="hc-inf-tipo-aseguradora">
+                  <span class="tipo-nombre">Informe para la aseguradora</span>
+                  <span class="tipo-para">El formulario del seguro: n.º de póliza, prestación
+                    sanitaria, antecedentes, motivo, diagnóstico y evolución.</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <!-- Campos del informe médico (plantilla B) -->
+            <div id="hc-inf-campos-clinico">
+              <div class="campo">
+                <label for="hc-inf-motivo">Motivo de la consulta</label>
+                <input type="text" id="hc-inf-motivo" class="entrada" autocomplete="off"
+                       placeholder="aumento de peso progresivo">
+                <p class="hint">Con esto la app arma la primera frase («Se trata de paciente… quien
+                  consulta por presentar…») usando el sexo, la edad y los antecedentes de la
+                  historia. Escribilo y tocá «Rehacer la frase inicial».</p>
+              </div>
+
+              <div class="campo">
+                <div class="etiqueta-fila">
+                  <label for="hc-inf-cuerpo">Cuerpo del informe</label>
+                  <button type="button" class="boton-secundario boton-chico" id="hc-inf-rehacer">
+                    Rehacer la frase inicial
+                  </button>
+                </div>
+                <textarea id="hc-inf-cuerpo" class="entrada area area-informe" rows="7"
+                          placeholder="Se trata de paciente…"></textarea>
+                <p class="hint" id="hc-inf-hint-cuerpo">La frase se carga sola al abrir el
+                  formulario. Es un punto de partida: editala como quieras.</p>
+                <p class="aviso-deshacer" id="hc-inf-aviso-cuerpo" role="status" hidden>
+                  <span id="hc-inf-aviso-cuerpo-texto"></span>
+                  <button type="button" class="boton-secundario boton-chico" id="hc-inf-deshacer-cuerpo">
+                    Deshacer
+                  </button>
+                </p>
+              </div>
+
+              <div class="campo">
+                <label for="hc-inf-diagnostico">Diagnóstico</label>
+                <div class="caja-sugerible">
+                  <input type="text" id="hc-inf-diagnostico" class="entrada" autocomplete="off"
+                         role="combobox" aria-expanded="false" aria-autocomplete="list"
+                         aria-controls="lista-hc-inf-diagnostico" placeholder="Escribí el diagnóstico">
+                  <ul class="sugerencias" id="lista-hc-inf-diagnostico" role="listbox" hidden></ul>
+                </div>
+              </div>
+
+              <div class="campo">
+                <div class="etiqueta-fila">
+                  <label for="hc-inf-tratamiento">Tratamiento indicado</label>
+                  <button type="button" class="boton-secundario boton-chico" id="hc-inf-traer-recipe">
+                    Traer del último récipe
+                  </button>
+                </div>
+                <textarea id="hc-inf-tratamiento" class="entrada area" rows="5"
+                          placeholder="Se indican exámenes pertinentes diagnósticos"></textarea>
+                <p class="aviso-deshacer" id="hc-inf-aviso-trat" role="status" hidden>
+                  <span id="hc-inf-aviso-trat-texto"></span>
+                  <button type="button" class="boton-secundario boton-chico" id="hc-inf-deshacer-trat">
+                    Deshacer
+                  </button>
+                </p>
+              </div>
+            </div>
+
+            <!-- Campos del informe para la aseguradora (plantilla A) -->
+            <div id="hc-inf-campos-aseguradora" hidden>
+              <div class="fila fila-config-2">
+                <div class="campo">
+                  <label for="hc-inf-poliza">N.º de póliza</label>
+                  <input type="text" id="hc-inf-poliza" class="entrada" autocomplete="off"
+                         placeholder="El número que trae la credencial del seguro">
+                </div>
+                <div class="campo">
+                  <label for="hc-inf-prestacion">Prestación sanitaria</label>
+                  <input type="text" id="hc-inf-prestacion" class="entrada" autocomplete="off"
+                         placeholder="Consulta médica especializada">
+                </div>
+              </div>
+              <div class="campo">
+                <label for="hc-inf-antecedentes">Antecedentes patológicos</label>
+                <textarea id="hc-inf-antecedentes" class="entrada area" rows="4"></textarea>
+                <p class="hint">Indicá la fecha de inicio de la patología, que es lo que pide el
+                  formulario del seguro.</p>
+              </div>
+              <div class="campo">
+                <label for="hc-inf-motivo-seg">Motivo de la consulta y/o ingreso</label>
+                <textarea id="hc-inf-motivo-seg" class="entrada area" rows="5"></textarea>
+                <p class="hint">Fecha de inicio de la enfermedad, de los síntomas y del
+                  diagnóstico.</p>
+              </div>
+              <div class="campo">
+                <label for="hc-inf-diagnostico-seg">Diagnóstico</label>
+                <div class="caja-sugerible">
+                  <input type="text" id="hc-inf-diagnostico-seg" class="entrada" autocomplete="off"
+                         role="combobox" aria-expanded="false" aria-autocomplete="list"
+                         aria-controls="lista-hc-inf-diagnostico-seg" placeholder="Escribí el diagnóstico">
+                  <ul class="sugerencias" id="lista-hc-inf-diagnostico-seg" role="listbox" hidden></ul>
+                </div>
+              </div>
+              <div class="campo">
+                <label for="hc-inf-evolucion">Evolución</label>
+                <textarea id="hc-inf-evolucion" class="entrada area" rows="4"></textarea>
+              </div>
+            </div>
+
+            <!-- Anexos opt-in (dec. 12) -->
+            <fieldset class="bloque-vitales bloque-anexos-informe">
+              <legend class="bloque-titulo">Anexos de este informe</legend>
+              <p class="hint">Estas imágenes salen como páginas al final del informe. Marcá solo
+                las que quieras entregar; si no marcás ninguna, el informe sale sin anexos.</p>
+              <div class="grilla-anexos grilla-anexos-informe" id="hc-inf-anexos"></div>
+              <p class="tabla-vacia" id="hc-inf-anexos-vacio" hidden>
+                Este paciente no tiene anexos guardados. Podés agregarlos en «Anexos», acá arriba.
+              </p>
+              <p class="hint hint-anexos-marcados" id="hc-inf-anexos-cuenta" role="status" hidden></p>
+            </fieldset>
+
+            <p class="modal-error" id="hc-inf-error" role="alert" hidden></p>
+
+            <div class="botones-config">
+              <button type="button" class="boton-principal boton-generar-informe" id="hc-inf-generar">
+                Generar e imprimir informe
+              </button>
+              <button type="button" class="boton-secundario" id="hc-inf-cancelar">Cancelar</button>
+            </div>
+          </div>
+
+          <!-- El PDF guardado, sin salir de la pantalla -->
+          <div class="pdf-informe" id="hc-inf-pdf" hidden>
+            <div class="titulo-fila">
+              <h3 class="subtitulo-historia" id="hc-inf-pdf-titulo">Informe en PDF</h3>
+              <button type="button" class="boton-secundario" id="hc-inf-pdf-cerrar">Cerrar</button>
+            </div>
+            <p class="previa-estado" id="hc-inf-pdf-estado" role="status"></p>
+            <div class="previa-marco marco-historia">
+              <iframe id="hc-inf-pdf-iframe" title="Informe médico en PDF"></iframe>
+            </div>
+          </div>
+
+          <div class="lista-informes" id="hc-lista-informes"></div>
+          <p class="tabla-vacia" id="hc-informes-vacio" hidden>
+            Todavía no hay informes de este paciente. Tocá «Nuevo informe».
+          </p>
+        </section>
+
+        <!-- ── 7 · Evolución (dec. 13) ── -->
+        <section class="bloque bloque-config" aria-labelledby="hc-t-evolucion">
+          <h2 class="titulo-config" id="hc-t-evolucion">Evolución</h2>
+          <p class="nota-config leyenda-evolucion">
+            <span class="leyenda-marca leyenda-medicion" aria-hidden="true"></span>
+            Punto lleno: valor cargado con una medición anexada.
+            <span class="leyenda-marca leyenda-consulta" aria-hidden="true"></span>
+            Punto hueco: peso o IMC tomados en la consulta.
+          </p>
+          <div class="grilla-graficos" id="hc-graficos"></div>
+          <p class="tabla-vacia" id="hc-evolucion-vacio" hidden>
+            Todavía no hay suficientes mediciones para graficar.
+          </p>
+        </section>
+
+      </div>
+
+      <!-- Selector de archivo del botón «Adjuntar desde una carpeta…» -->
+      <input type="file" id="hc-archivo" class="archivo-oculto"
+             accept="image/jpeg,image/png,image/webp" hidden>
+
+    </div>
+  </section>
+
+  <!-- ══════════ PANEL C · RÉCIPES EMITIDOS ══════════ -->
   <section class="panel" id="panel-historial" role="tabpanel" aria-labelledby="tab-historial" hidden>
 
     <div class="trabajo trabajo-historial">
@@ -159,7 +931,7 @@
           <div class="campo">
             <label class="etiqueta-grande" for="hist-q">Buscá por código, paciente o medicamento</label>
             <input type="search" id="hist-q" class="entrada entrada-buscador" autocomplete="off"
-                   spellcheck="false" placeholder="EC-2026-0001, Pérez, ibuprofeno…">
+                   spellcheck="false" placeholder="EC-0001, Pérez, ibuprofeno…">
           </div>
 
           <div class="fila fila-fechas">
@@ -186,7 +958,7 @@
           <table class="tabla-historial">
             <thead>
               <tr>
-                <th scope="col" class="col-codigo">Código</th>
+                <th scope="col" class="col-codigo">Código del paciente</th>
                 <th scope="col" class="col-fecha">Fecha</th>
                 <th scope="col" class="col-paciente">Paciente</th>
                 <th scope="col" class="col-medicamentos">Medicamentos</th>
@@ -222,7 +994,7 @@
     </div>
   </section>
 
-  <!-- ══════════ PANEL C · CONFIGURACIÓN ══════════ -->
+  <!-- ══════════ PANEL D · CONFIGURACIÓN ══════════ -->
   <section class="panel" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
     <div class="columna-config" id="columna-config">
 
@@ -232,9 +1004,11 @@
       <section class="bloque bloque-config" aria-labelledby="cfg-t-medico">
         <h2 class="titulo-config" id="cfg-t-medico">Datos del médico</h2>
         <p class="nota-config">
-          Estos datos <strong>no salen impresos</strong> en el récipe: el talonario se
-          completa con tu sello. Se guardan acá para el Excel y para el día que haga
-          falta imprimirlos.
+          Estos datos <strong>no salen en el récipe</strong> —el talonario se completa
+          con tu sello—, pero <strong>sí salen en el informe médico</strong>: el nombre,
+          la especialidad, el COMEZU y el MPPS van en la cabecera, y la ciudad en el
+          renglón de la fecha, al pie. Vienen cargados con los tuyos; lo que corrijas
+          acá queda como lo dejes y no se vuelve a pisar.
         </p>
 
         <div class="fila fila-config-2">
@@ -254,12 +1028,23 @@
             <input type="text" id="cfg-mpps" class="entrada" autocomplete="off" data-config="mpps">
           </div>
           <div class="campo">
-            <label for="cfg-colegio">Colegio de médicos</label>
-            <input type="text" id="cfg-colegio" class="entrada" autocomplete="off" data-config="colegio">
+            <label for="cfg-comezu">COMEZU</label>
+            <input type="text" id="cfg-comezu" class="entrada" autocomplete="off" data-config="comezu">
           </div>
           <div class="campo">
             <label for="cfg-rif">RIF</label>
             <input type="text" id="cfg-rif" class="entrada" autocomplete="off" data-config="rif">
+          </div>
+        </div>
+
+        <div class="fila fila-config-2">
+          <div class="campo">
+            <label for="cfg-colegio">Colegio de médicos</label>
+            <input type="text" id="cfg-colegio" class="entrada" autocomplete="off" data-config="colegio">
+          </div>
+          <div class="campo">
+            <label for="cfg-ciudad">Ciudad</label>
+            <input type="text" id="cfg-ciudad" class="entrada" autocomplete="off" data-config="ciudad">
           </div>
         </div>
 
@@ -275,14 +1060,15 @@
         </div>
 
         <p class="nota-config nota-firma">
-          No hay carga de firma: el médico firma a mano sobre el papel impreso, así que
-          el PDF deja el espacio en blanco y la app no guarda ninguna imagen de firma.
+          El <strong>récipe</strong> no lleva firma impresa: lo firmás a mano sobre el
+          papel, y el PDF deja el espacio en blanco. El <strong>informe médico</strong>
+          sí sale ya firmado, con tu firma escaneada, que viene adentro del programa.
         </p>
       </section>
 
-      <!-- ── Código de los récipes ── -->
+      <!-- ── Código de los pacientes ── -->
       <section class="bloque bloque-config" aria-labelledby="cfg-t-codigo">
-        <h2 class="titulo-config" id="cfg-t-codigo">Código de los récipes</h2>
+        <h2 class="titulo-config" id="cfg-t-codigo">Código de los pacientes</h2>
         <div class="fila fila-config-prefijo">
           <div class="campo">
             <label for="cfg-prefijo">Prefijo</label>
@@ -292,10 +1078,12 @@
           </div>
           <div class="campo">
             <span class="etiqueta-suelta">Ejemplo de código con este prefijo</span>
-            <p class="muestra-codigo" id="cfg-muestra">EC-2026-0001</p>
+            <p class="muestra-codigo" id="cfg-muestra">EC-0001</p>
           </div>
         </div>
-        <p class="nota-config">Los récipes ya emitidos conservan su código.</p>
+        <p class="nota-config">Cada paciente recibe un número correlativo al registrarlo, y ese
+          código sale impreso en todos sus récipes. Los pacientes que ya tienen código y los
+          récipes ya emitidos conservan el suyo.</p>
       </section>
 
       <!-- ── Logo ── -->
@@ -385,7 +1173,8 @@
         <h2 class="titulo-config" id="cfg-t-ayuda">Ayuda</h2>
         <p class="nota-config">
           El recorrido guiado que se abre la primera vez. Te muestra, sobre la
-          pantalla misma, cómo emitir un récipe. Podés verlo las veces que quieras.
+          pantalla misma, el camino completo: buscar o crear al paciente, su
+          historia, y de ahí el récipe y el informe. Podés verlo las veces que quieras.
         </p>
         <div class="botones-config">
           <button type="button" class="boton-secundario" id="cfg-ver-tutorial">
@@ -393,7 +1182,8 @@
           </button>
         </div>
         <p class="nota-config nota-chica">
-          Se abre en la pestaña «Nuevo récipe»: nada de lo que estés escribiendo se pierde.
+          Empieza en «Historia clínica» y al terminar te deja donde estabas: nada de
+          lo que estés escribiendo se pierde.
         </p>
       </section>
 
@@ -420,7 +1210,8 @@
     <p class="modal-sub" id="modal-anular-sub"></p>
 
     <p class="modal-aviso" id="modal-anular-aviso">
-      El récipe queda anulado para siempre; el código EC-… no se vuelve a usar.
+      Este récipe queda anulado para siempre. El código EC-… es el del paciente:
+      sus otros récipes no se tocan.
     </p>
 
     <div class="campo">
@@ -436,6 +1227,153 @@
       <button type="button" class="boton-secundario" id="modal-anular-cancelar">Cancelar</button>
       <button type="button" class="boton-peligro" id="modal-anular-aceptar">Anular récipe</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ Modal: anular informe ══════════
+     Mismo patrón que el del récipe: motivo obligatorio, se avisa qué pasa con
+     el PDF y no se des-anula nunca.
+-->
+<div class="modal" id="modal-anular-informe" hidden>
+  <div class="modal-fondo" id="modal-inf-anular-fondo"></div>
+  <div class="modal-caja" role="dialog" aria-modal="true"
+       aria-labelledby="modal-inf-anular-titulo" id="modal-inf-anular-caja">
+    <h2 class="modal-titulo" id="modal-inf-anular-titulo">Anular informe</h2>
+    <p class="modal-sub" id="modal-inf-anular-sub"></p>
+
+    <p class="modal-aviso" id="modal-inf-anular-aviso">
+      El informe queda marcado como anulado para siempre. El PDF sigue guardado
+      en la carpeta del paciente: si ya lo entregaste, esa copia no se borra.
+    </p>
+
+    <div class="campo">
+      <label for="modal-inf-anular-motivo">Motivo de la anulación</label>
+      <textarea id="modal-inf-anular-motivo" class="entrada area" rows="4"
+                placeholder="Por ejemplo: error en el diagnóstico; se emitió otro informe."></textarea>
+      <p class="hint">Queda guardado en la historia, junto al informe.</p>
+    </div>
+
+    <p class="modal-error" id="modal-inf-anular-error" role="alert" hidden></p>
+
+    <div class="modal-botones">
+      <button type="button" class="boton-secundario" id="modal-inf-anular-cancelar">Cancelar</button>
+      <button type="button" class="boton-peligro" id="modal-inf-anular-aceptar">Anular informe</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Modal: anexar una imagen a la historia ══════════ -->
+<div class="modal" id="modal-anexo" hidden>
+  <div class="modal-fondo" id="modal-anexo-fondo"></div>
+  <div class="modal-caja modal-caja-ancha" role="dialog" aria-modal="true"
+       aria-labelledby="modal-anexo-titulo" id="modal-anexo-caja">
+    <h2 class="modal-titulo" id="modal-anexo-titulo">Anexar imagen a la historia</h2>
+    <p class="modal-sub" id="modal-anexo-sub"></p>
+
+    <div class="anexo-dialogo">
+      <div class="anexo-previa-marco">
+        <img class="anexo-previa" id="modal-anexo-previa" alt="Imagen que se va a anexar" hidden>
+        <p class="anexo-previa-vacia" id="modal-anexo-previa-vacia">Archivo elegido de una carpeta.</p>
+      </div>
+
+      <div class="anexo-campos">
+        <div class="campo campo-fecha-medicion">
+          <label for="modal-anexo-fecha">Fecha de la medición</label>
+          <input type="date" id="modal-anexo-fecha" class="entrada">
+          <p class="aviso-fecha" id="modal-anexo-aviso-fecha">
+            Verificá esta fecha. Es la del archivo, y casi nunca es el día en que
+            se hizo la medición: miralo en el informe.
+          </p>
+        </div>
+
+        <div class="campo">
+          <label for="modal-anexo-tipo">Tipo</label>
+          <select id="modal-anexo-tipo" class="entrada">
+            <option value="medicion">Medición de composición corporal</option>
+            <option value="laboratorio">Laboratorio</option>
+            <option value="imagen">Estudio de imagen</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <div class="campo">
+          <label for="modal-anexo-consulta">Consulta a la que pertenece (opcional)</label>
+          <select id="modal-anexo-consulta" class="entrada">
+            <option value="">Sin consulta — queda colgada del paciente</option>
+          </select>
+        </div>
+
+        <div class="campo">
+          <label for="modal-anexo-nota">Nota (opcional)</label>
+          <input type="text" id="modal-anexo-nota" class="entrada" autocomplete="off"
+                 placeholder="Báscula del consultorio, control post dieta…">
+        </div>
+      </div>
+    </div>
+
+    <details class="plegable-valores" id="modal-anexo-valores">
+      <summary>Cargar valores para el gráfico (opcional)</summary>
+      <p class="hint">Son cinco números del informe. Si los cargás, el paciente aparece en
+        el gráfico de evolución. Podés dejarlos vacíos: la imagen se anexa igual.</p>
+      <div class="grilla-valores">
+        <div class="campo">
+          <label for="modal-anexo-peso">Peso (kg)</label>
+          <input type="text" id="modal-anexo-peso" class="entrada entrada-numerito"
+                 inputmode="decimal" autocomplete="off" data-medicion="peso">
+        </div>
+        <div class="campo">
+          <label for="modal-anexo-imc">IMC</label>
+          <input type="text" id="modal-anexo-imc" class="entrada entrada-numerito"
+                 inputmode="decimal" autocomplete="off" data-medicion="imc">
+        </div>
+        <div class="campo">
+          <label for="modal-anexo-grasa">% de grasa</label>
+          <input type="text" id="modal-anexo-grasa" class="entrada entrada-numerito"
+                 inputmode="decimal" autocomplete="off" data-medicion="grasa_pct">
+        </div>
+        <div class="campo">
+          <label for="modal-anexo-musculo">Músculo (kg)</label>
+          <input type="text" id="modal-anexo-musculo" class="entrada entrada-numerito"
+                 inputmode="decimal" autocomplete="off" data-medicion="musculo_kg">
+        </div>
+        <div class="campo">
+          <label for="modal-anexo-visceral">Grasa visceral</label>
+          <input type="text" id="modal-anexo-visceral" class="entrada entrada-numerito"
+                 inputmode="decimal" autocomplete="off" data-medicion="grasa_visceral">
+        </div>
+      </div>
+    </details>
+
+    <p class="modal-error" id="modal-anexo-error" role="alert" hidden></p>
+
+    <div class="modal-botones">
+      <button type="button" class="boton-secundario" id="modal-anexo-cancelar">Cancelar</button>
+      <button type="button" class="boton-principal" id="modal-anexo-aceptar">Anexar a la historia</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Visor de anexos (lightbox propio, sin librerías) ══════════ -->
+<div class="visor" id="visor" hidden>
+  <div class="visor-barra">
+    <p class="visor-titulo" id="visor-titulo"></p>
+    <div class="visor-botones">
+      <button type="button" class="boton-visor" id="visor-alejar">− Alejar</button>
+      <button type="button" class="boton-visor" id="visor-acercar">+ Acercar</button>
+      <button type="button" class="boton-visor" id="visor-ajustar">Ajustar a la pantalla</button>
+      <button type="button" class="boton-visor" id="visor-windows">Abrir con el visor de Windows</button>
+      <button type="button" class="boton-visor boton-visor-cerrar" id="visor-cerrar">Cerrar</button>
+    </div>
+  </div>
+
+  <div class="visor-lienzo" id="visor-lienzo">
+    <img id="visor-img" class="visor-img" alt="Anexo en tamaño grande">
+  </div>
+
+  <div class="visor-pie">
+    <button type="button" class="boton-visor" id="visor-anterior">← Anterior</button>
+    <p class="visor-pie-texto" id="visor-pie-texto" role="status"></p>
+    <button type="button" class="boton-visor" id="visor-siguiente">Siguiente →</button>
   </div>
 </div>
 
@@ -465,7 +1403,7 @@
        aria-labelledby="tutorial-titulo" aria-describedby="tutorial-texto">
 
     <div id="tutorial-cuerpo">
-      <p class="tutorial-paso" id="tutorial-paso">Paso 1 de 7</p>
+      <p class="tutorial-paso" id="tutorial-paso">Paso 1 de 8</p>
       <h2 class="tutorial-titulo" id="tutorial-titulo">Bienvenido</h2>
       <p class="tutorial-texto" id="tutorial-texto"></p>
 

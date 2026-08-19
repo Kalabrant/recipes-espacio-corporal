@@ -21,13 +21,15 @@ Programa para emitir récipes médicos de Espacio Corporal. Funciona sin interne
 
 ## La primera vez
 
-- **El tutorial se abre solo** la primera vez que arranca el programa y te muestra, paso a paso, cómo emitir un récipe. Se cierra cuando querés y no vuelve a aparecer.
-- Antes de emitir el primer récipe, andá a **Configuración** y completá tus datos: nombre, especialidad, MPPS, colegio de médicos, RIF, dirección y teléfonos. Eso es lo que sale impreso en el encabezado de cada récipe.
+- **El tutorial se abre solo** la primera vez que arranca el programa y te muestra, paso a paso, el camino: buscar al paciente, su historia, y de ahí el récipe y el informe. Se cierra cuando querés y no vuelve a aparecer.
+- Antes de emitir el primer récipe, andá a **Configuración** y revisá tus datos: nombre, especialidad, MPPS, COMEZU, RIF, colegio de médicos, ciudad, dirección y teléfonos. El nombre, el COMEZU, el MPPS y la ciudad ya vienen cargados con los tuyos; si corregís alguno, queda como vos lo dejes. **En el récipe no salen** (el talonario se completa con tu sello), pero **en el informe médico sí**: van en la cabecera, y la ciudad en el renglón de la fecha al pie.
 - **El PIN es opcional.** El programa arranca sin PIN: abre directo. Si querés que pida una clave de 4 a 6 números al abrir, la activás en **Configuración → PIN al abrir**. Como dice la propia pantalla:
 
   > El PIN es una barrera contra quien pase frente a la computadora, no una caja fuerte: los archivos siguen estando en tu carpeta de datos.
 
-- Emitir un récipe es siempre lo mismo: escribís el paciente, elegís los medicamentos y apretás **Guardar e imprimir**. Ese botón hace todo: le pone el código, lo guarda, genera el PDF, actualiza el registro y lo abre listo para imprimir.
+- **El programa abre en Historia clínica**, que es por donde empieza todo. Escribís el nombre o la cédula del paciente y lo elegís de la lista. ¿Viene por primera vez? Escribí su nombre y al pie de la lista aparece **"➕ Crear paciente nuevo"**: lo das de alta ahí mismo (lo único obligatorio es el nombre), se le asigna su código `EC-0001` y su carpeta, y su historia queda abierta.
+- Con la historia abierta, los botones **Nuevo récipe para este paciente** y **Nuevo informe** arrancan con esa persona ya puesta: no la escribís de nuevo. Arriba del récipe una banda te dice de quién es y te deja cambiarlo.
+- Emitir un récipe es siempre lo mismo: el paciente, los medicamentos y **Guardar e imprimir**. Ese botón hace todo: le pone el código, lo guarda, genera el PDF, actualiza el registro y lo abre listo para imprimir. Si tenés apuro y no querés abrir ninguna historia, en **Nuevo récipe** podés escribir el nombre del paciente a mano, como siempre.
 
 ---
 
@@ -39,14 +41,15 @@ Todo vive en una sola carpeta de tu computadora:
 Documentos\Recipes\
 ```
 
-Adentro hay cinco carpetas:
+Adentro hay estas carpetas:
 
 | Carpeta | Qué hay adentro |
 |---|---|
 | `datos\` | El archivo con **toda la información**: pacientes, medicamentos, récipes emitidos. Es el corazón del programa. |
-| `pdf\` | Un PDF por cada récipe que emitiste, ordenados por año. Los podés abrir e imprimir cuando quieras, aunque el programa esté cerrado. |
+| `pacientes\` | Una carpeta por paciente (`EC-0001_APELLIDO-Nombre\`) con `recipes\`, `informes\` y `anexos\` adentro. Ahí cae todo lo nuevo de esa persona. El nombre de la carpeta se escribe una sola vez, cuando el paciente recibe su código: si después corregís cómo se llama, la carpeta no cambia de nombre (la que manda es el código) y todo sigue junto. |
+| `pdf\` | Los récipes emitidos con las versiones anteriores del programa, ordenados por año. Se quedan donde están y se siguen abriendo e imprimiendo igual desde **Récipes emitidos**. Los récipes nuevos ya no van acá, van a `pacientes\`. |
 | `registro\` | La planilla de Excel con la lista de todos los récipes y todos los medicamentos recetados. Sirve para mirar, buscar y sacar cuentas. |
-| `respaldos\` | Las copias de seguridad automáticas, en archivos `.zip`. |
+| `respaldos\` | Las copias de seguridad automáticas, en archivos `.zip`. Adentro va `datos\`, `registro\` y `pacientes\` entera. |
 | `recursos\` | El logo que se imprime en el récipe. |
 
 **Instalar una versión nueva encima o desinstalar el programa NUNCA toca tus récipes.** El instalador no entra en `Documentos\Recipes`. Podés desinstalar, volver a instalar, o instalar una versión más nueva, y al abrirla vas a encontrar todos tus récipes, tus pacientes y tus medicamentos tal cual los dejaste.
@@ -77,7 +80,7 @@ Tenés la planilla `registro_recipes.xlsx` abierta en Excel, y mientras está ab
 Lo mismo que arriba, pero por otro motivo (por ejemplo, poco espacio en el disco). El récipe está a salvo. Si se repite muchas veces, fijate cuánto espacio libre te queda en el disco.
 
 **"No se pudo abrir el PDF con el visor de Windows. Abrilo a mano desde: …"**
-El récipe está hecho y guardado; lo que falló fue el programa que abre los PDF. El mensaje te muestra la ruta exacta del archivo: entrá a esa carpeta (o usá **Configuración → Abrir carpeta**, y de ahí a `pdf\`) y abrilo con doble clic. Si te pasa siempre, es que Windows no tiene un programa asignado para abrir PDF.
+El récipe está hecho y guardado; lo que falló fue el programa que abre los PDF. El mensaje te muestra la ruta exacta del archivo: entrá a esa carpeta (o usá **Configuración → Abrir carpeta**, y de ahí a `pacientes\` y la carpeta del paciente) y abrilo con doble clic. Si te pasa siempre, es que Windows no tiene un programa asignado para abrir PDF.
 
 **"El récipe no entra en la hoja. Sacá un medicamento o acortá las indicaciones, y emití el resto en un segundo récipe."**
 Cargaste más de lo que cabe en una hoja. El programa avisa **antes** de emitir, así que no se quemó ningún número: sacá un renglón, emití ese récipe, y hacé un segundo récipe con lo que falta.
@@ -95,10 +98,10 @@ Cerrá el programa del todo (que no quede otra ventana abierta), volvé a abrirl
 El PIN son de 4 a 6 números, sin letras ni espacios. Si te olvidaste el PIN, **no perdiste nada**: los PDF de todos tus récipes y la planilla de Excel siguen estando en `Documentos\Recipes` y los podés abrir sin el programa. Para sacar el PIN pedile ayuda a quien te instaló el programa.
 
 **No encuentro un récipe viejo.**
-Andá a **Historial** y buscá por código, por nombre del paciente, por medicamento o por rango de fechas. Desde ahí lo podés ver, **reimprimir** (sale el mismo PDF original, sin cambios) o **anular**.
+Andá a **Récipes emitidos** y buscá por código, por nombre del paciente, por medicamento o por rango de fechas. Desde ahí lo podés ver, **reimprimir** (sale el mismo PDF original, sin cambios) o **anular**. También los tenés todos juntos en la historia del paciente.
 
 **Emití un récipe con un error.**
-No se borra: se **anula**, desde Historial, escribiendo el motivo. Queda tachado en la lista y anotado como anulado en el registro. El número no se reutiliza. Después emitís el récipe corregido, que sale con un número nuevo.
+No se borra: se **anula**, desde **Récipes emitidos**, escribiendo el motivo. Queda tachado en la lista y anotado como anulado en el registro. Después emitís el récipe corregido: sale con el mismo código, porque el código es del paciente y lo llevan todos sus récipes; lo que los distingue es la fecha.
 
 **El programa no abre / se cierra solo.**
 Reiniciá la computadora y probá de nuevo. Si sigue igual, desinstalá el programa e instalá otra vez el `Setup.exe`: **no vas a perder ningún récipe**, porque tus datos están en `Documentos\Recipes` y el instalador no los toca.

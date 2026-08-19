@@ -59,7 +59,10 @@ def _item(nombre, presentacion="Tabletas", cantidad="10 tabletas",
 
 def _datos(items, generales=""):
     return {
-        "codigo": "EC-2026-0001",
+        # Desde la 2.0 lo que se imprime es el código DEL PACIENTE (dec. 2):
+        # `EC-0001`, sin año. El maquetado no cambia —sigue siendo el texto de
+        # arriba a la derecha—, pero la muestra tiene que ser la de verdad.
+        "codigo": "EC-0001",
         "fecha_emision": "14/08/2026",
         "paciente_nombre": "Ana Pérez",
         "items": items,

@@ -88,8 +88,46 @@ class TestRespaldarAhora(CarpetaDeDatos):
         self.assertIn("registro/registro_recipes.xlsx", nombres)
         # Los auxiliares del WAL no van: la copia ya es consistente.
         self.assertFalse([n for n in nombres if n.endswith(("-wal", "-shm"))], nombres)
-        # Los PDF no entran al respaldo.
+        # `pdf\` —los récipes de la 1.x— sigue afuera: se regenera desde la
+        # base. Lo que sí entra ahora es `pacientes\` (dec. 17), abajo.
         self.assertFalse([n for n in nombres if n.startswith("pdf/")], nombres)
+
+    def test_la_carpeta_de_pacientes_entra_entera(self):
+        """Dec. 17: `pacientes\\` va al ZIP con anexos e informes adentro.
+
+        Los anexos son la única copia que queda de una medición (dec. 11): si
+        no entran al respaldo, no hay de dónde recuperarlos.
+        """
+        paciente = self.dir_datos / "pacientes" / "EC-0001_Juan-Perez"
+        for sub in ("recipes", "informes", "anexos"):
+            (paciente / sub).mkdir(parents=True)
+        (paciente / "recipes" / "EC-0001_Juan-Perez_2026-08-14.pdf").write_bytes(b"%PDF-1.4")
+        (paciente / "anexos" / "2026-08-14_balanza_01.jpg").write_bytes(b"\xff\xd8falsa")
+        (paciente / "informes" / "EC-0001_informe_2026-08-14.pdf").write_bytes(b"%PDF-1.4")
+
+        archivo = respaldo.respaldar_ahora(self.dir_datos, date(2026, 8, 14))
+        with zipfile.ZipFile(archivo) as zip_:
+            nombres = set(zip_.namelist())
+        self.assertIn(
+            "pacientes/EC-0001_Juan-Perez/recipes/EC-0001_Juan-Perez_2026-08-14.pdf",
+            nombres)
+        self.assertIn(
+            "pacientes/EC-0001_Juan-Perez/anexos/2026-08-14_balanza_01.jpg", nombres)
+        self.assertIn(
+            "pacientes/EC-0001_Juan-Perez/informes/EC-0001_informe_2026-08-14.pdf",
+            nombres)
+        # Y lo de siempre sigue estando.
+        self.assertIn("datos/recipes.db", nombres)
+
+    def test_sin_pacientes_todavia_el_respaldo_sale_igual(self):
+        """En una instalación recién hecha la carpeta no existe: no es un error."""
+        self.assertFalse((self.dir_datos / "pacientes").exists())
+        archivo = respaldo.respaldar_ahora(self.dir_datos, date(2026, 8, 14))
+        self.assertTrue(zipfile.is_zipfile(archivo))
+        with zipfile.ZipFile(archivo) as zip_:
+            nombres = set(zip_.namelist())
+        self.assertIn("datos/recipes.db", nombres)
+        self.assertFalse([n for n in nombres if n.startswith("pacientes/")], nombres)
 
     def test_no_deja_temporales(self):
         respaldo.respaldar_ahora(self.dir_datos, date(2026, 8, 14))

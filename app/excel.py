@@ -8,11 +8,20 @@ igual que antes, porque la verdad vive en `recipes.db`.
 
 Dos hojas (§9):
 
-- **Récipes** — código, fecha, paciente, cédula, edad, diagnóstico, cantidad
-  de medicamentos, estado (Emitido/Anulado), motivo de la anulación y ruta
-  del PDF.
-- **Medicamentos** — una fila por renglón recetado: código, fecha, paciente,
-  medicamento, presentación, cantidad, dosis e indicaciones.
+- **Récipes** — código de paciente, N.º interno, fecha, paciente, cédula,
+  edad, diagnóstico, cantidad de medicamentos, estado (Emitido/Anulado),
+  motivo de la anulación y ruta del PDF.
+- **Medicamentos** — una fila por renglón recetado: código de paciente, N.º
+  interno, fecha, paciente, medicamento, presentación, cantidad, dosis e
+  indicaciones.
+
+**Cómo se identifica un récipe desde la 2.0** (dec. 2). El código impreso es
+el del paciente y se repite en todos sus récipes, así que la primera columna
+ya no es una clave: el récipe se identifica por **código + fecha**, y cuando
+hay dos el mismo día los separa el `N.º interno`, que es el `id` de la fila en
+`recipes` —el mismo que usa el Historial para abrir o anular—. No se imprime
+en ningún lado y no es un número correlativo por paciente: es la llave técnica
+que hace que cada renglón del Excel apunte a un récipe y a uno solo.
 
 Dos cosas que este módulo se toma en serio:
 
@@ -65,9 +74,18 @@ MENSAJE_BLOQUEADO = "El registro está abierto en Excel. Cerralo y volvé a inte
 ESTADO_EMITIDO = "Emitido"
 ESTADO_ANULADO = "Anulado"
 
+#: Encabezado de la primera columna. Dice "de paciente" a propósito: quien
+#: filtre por ahí tiene que entender de una que va a ver a una persona y todos
+#: sus récipes, no un récipe (dec. 2).
+COLUMNA_CODIGO = "Código de paciente"
+
+#: Encabezado de la columna que sí identifica un récipe y uno solo.
+COLUMNA_RECIPE = "N.º interno"
+
 #: (encabezado, ancho de columna). El ancho es en "caracteres" de Excel.
 COLUMNAS_RECIPES: tuple[tuple[str, int], ...] = (
-    ("Código", 16),
+    (COLUMNA_CODIGO, 18),
+    (COLUMNA_RECIPE, 12),
     ("Fecha", 12),
     ("Paciente", 30),
     ("Cédula", 14),
@@ -80,7 +98,8 @@ COLUMNAS_RECIPES: tuple[tuple[str, int], ...] = (
 )
 
 COLUMNAS_MEDICAMENTOS: tuple[tuple[str, int], ...] = (
-    ("Código", 16),
+    (COLUMNA_CODIGO, 18),
+    (COLUMNA_RECIPE, 12),
     ("Fecha", 12),
     ("Paciente", 30),
     ("Medicamento", 28),
@@ -144,6 +163,21 @@ def _fecha(valor: Any) -> str:
     return _texto(valor)[:10]
 
 
+def _entero(valor: Any) -> Any:
+    """Número para una celda numérica, o "" si no vino nada.
+
+    El `N.º interno` se escribe como número y no como texto para que Excel lo
+    ordene bien: con 9 y 10 en la misma columna, el orden alfabético pondría
+    el 10 antes que el 9.
+    """
+    if valor in (None, ""):
+        return ""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return _texto(valor)
+
+
 def _dato(fila: Any, clave: str, por_defecto: Any = None) -> Any:
     """Lee una clave de un `sqlite3.Row` o de un dict, sin romperse si falta."""
     try:
@@ -196,6 +230,7 @@ def _armar_libro(con: sqlite3.Connection) -> Workbook:
         anulado = bool(_dato(fila, "anulado", 0))
         _escribir_fila(hoja_r, (
             _texto(_dato(fila, "codigo")),
+            _entero(_dato(fila, "id")),
             _fecha(_dato(fila, "fecha_emision")),
             _texto(_dato(fila, "paciente_nombre")),
             _texto(_dato(fila, "paciente_cedula")),
@@ -216,6 +251,7 @@ def _armar_libro(con: sqlite3.Connection) -> Workbook:
         anulado = bool(_dato(fila, "anulado", 0))
         _escribir_fila(hoja_m, (
             _texto(_dato(fila, "codigo")),
+            _entero(_dato(fila, "recipe_id")),
             _fecha(_dato(fila, "fecha_emision")),
             _texto(_dato(fila, "paciente_nombre")),
             _texto(_dato(fila, "medicamento")),

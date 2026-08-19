@@ -132,8 +132,18 @@ class TestEstructura(BaseConDatos):
         excel.regenerar_registro(self.con, self.ruta_xlsx)
         libro = self.leer()
         # 2 récipes + encabezado; 3 renglones de medicamentos + encabezado.
-        self.assertEqual(libro[excel.HOJA_RECIPES].auto_filter.ref, "A1:J3")
-        self.assertEqual(libro[excel.HOJA_MEDICAMENTOS].auto_filter.ref, "A1:H4")
+        self.assertEqual(libro[excel.HOJA_RECIPES].auto_filter.ref, "A1:K3")
+        self.assertEqual(libro[excel.HOJA_MEDICAMENTOS].auto_filter.ref, "A1:I4")
+        libro.close()
+
+    def test_las_dos_hojas_encabezan_con_el_codigo_de_paciente(self):
+        """Dec. 2: la primera columna es una persona, no un récipe."""
+        excel.regenerar_registro(self.con, self.ruta_xlsx)
+        libro = self.leer()
+        for hoja in (libro[excel.HOJA_RECIPES], libro[excel.HOJA_MEDICAMENTOS]):
+            self.assertEqual(hoja["A1"].value, "Código de paciente")
+            self.assertEqual(hoja["B1"].value, "N.º interno")
+            self.assertEqual(hoja["C1"].value, "Fecha")
         libro.close()
 
 
@@ -151,16 +161,17 @@ class TestContenido(BaseConDatos):
         self.assertEqual(hoja.max_row, 2)
 
         fila = [c.value for c in hoja[2]]
-        self.assertEqual(fila[0], recipe["codigo"])
-        self.assertEqual(fila[1], "2026-08-14")
-        self.assertEqual(fila[2], "Juan Pérez")
-        self.assertEqual(fila[3], "V-12345678")
-        self.assertEqual(fila[4], 40)
-        self.assertEqual(fila[5], "Faringitis aguda")
-        self.assertEqual(fila[6], 2)                      # cantidad de renglones
-        self.assertEqual(fila[7], excel.ESTADO_EMITIDO)
-        self.assertIn(fila[8], (None, ""))                # sin motivo: no está anulado
-        self.assertIn(fila[9], (None, ""))                # todavía sin PDF guardado
+        self.assertEqual(fila[0], recipe["codigo"])       # el del PACIENTE (dec. 2)
+        self.assertEqual(fila[1], int(recipe["id"]))      # N.º interno del récipe
+        self.assertEqual(fila[2], "2026-08-14")
+        self.assertEqual(fila[3], "Juan Pérez")
+        self.assertEqual(fila[4], "V-12345678")
+        self.assertEqual(fila[5], 40)
+        self.assertEqual(fila[6], "Faringitis aguda")
+        self.assertEqual(fila[7], 2)                      # cantidad de renglones
+        self.assertEqual(fila[8], excel.ESTADO_EMITIDO)
+        self.assertIn(fila[9], (None, ""))                # sin motivo: no está anulado
+        self.assertIn(fila[10], (None, ""))               # todavía sin PDF guardado
         libro.close()
 
     def test_ruta_del_pdf_va_al_registro(self):
@@ -169,7 +180,81 @@ class TestContenido(BaseConDatos):
         basedatos.guardar_ruta_pdf(self.con, int(recipe["id"]), ruta_pdf)
         excel.regenerar_registro(self.con, self.ruta_xlsx)
         libro = self.leer()
-        self.assertEqual(libro[excel.HOJA_RECIPES]["J2"].value, ruta_pdf)
+        self.assertEqual(libro[excel.HOJA_RECIPES]["K2"].value, ruta_pdf)
+        libro.close()
+
+    def test_dos_recipes_del_mismo_paciente_comparten_codigo(self):
+        """Dec. 2: mismo paciente, mismo código; los separa el N.º interno."""
+        primero = self.emitir(fecha="2026-08-14")
+        segundo = self.emitir(items=ITEMS_DOS, fecha="2026-08-15")
+        self.assertEqual(primero["codigo"], segundo["codigo"])
+
+        excel.regenerar_registro(self.con, self.ruta_xlsx)
+        libro = self.leer()
+        hoja = libro[excel.HOJA_RECIPES]
+        self.assertEqual(hoja.max_row, 3)
+        # Orden por fecha DESC: primero el del 15.
+        self.assertEqual(hoja["A2"].value, segundo["codigo"])
+        self.assertEqual(hoja["A3"].value, primero["codigo"])
+        self.assertEqual(hoja["B2"].value, int(segundo["id"]))
+        self.assertEqual(hoja["B3"].value, int(primero["id"]))
+        self.assertNotEqual(hoja["B2"].value, hoja["B3"].value)
+        # Y la fecha, que es la otra mitad de la identificación.
+        self.assertEqual(hoja["C2"].value, "2026-08-15")
+        self.assertEqual(hoja["C3"].value, "2026-08-14")
+
+        # En Medicamentos pasa lo mismo: el N.º interno dice de qué récipe
+        # salió cada renglón, aunque el código sea el mismo.
+        hoja_m = libro[excel.HOJA_MEDICAMENTOS]
+        del_segundo = [f for f in hoja_m.iter_rows(min_row=2, values_only=True)
+                       if f[1] == int(segundo["id"])]
+        self.assertEqual(len(del_segundo), 1)             # ITEMS_DOS trae uno
+        self.assertEqual(del_segundo[0][0], segundo["codigo"])
+        self.assertEqual(del_segundo[0][4], "Losartán")
+        libro.close()
+
+    def test_el_recipe_anterior_a_la_2_0_conserva_su_codigo_viejo(self):
+        """No se reescribe lo ya impreso: el registro muestra lo que dice el papel.
+
+        Un récipe emitido con la 1.x quedó con el código del récipe
+        (`EC-2026-0007`, con año y secuencial propios). La migración no lo
+        toca, y el Excel tampoco: la columna dice "Código de paciente" porque
+        es lo que trae todo lo nuevo, pero lo viejo sale tal cual se imprimió.
+        """
+        paciente_id = basedatos.crear_paciente(self.con, "Viejo Récipe", cedula="V-1")
+        with basedatos.transaccion(self.con, inmediata=True):
+            momento = basedatos.ahora_iso()
+            cur = self.con.execute(
+                """
+                INSERT INTO recipes (codigo, anio, secuencial, paciente_id,
+                                     fecha_emision, anulado, creado_en, actualizado_en)
+                VALUES ('EC-2026-0007', 2026, 7, ?, '2026-01-09', 0, ?, ?)
+                """,
+                (int(paciente_id), momento, momento),
+            )
+            basedatos.insertar_recipe_item(
+                self.con, int(cur.lastrowid), 1, medicamento="Losartán",
+                presentacion="50 mg", cantidad="30 tabletas", dosis="1 diaria",
+                indicaciones="",
+            )
+            recipe_viejo = int(cur.lastrowid)
+
+        excel.regenerar_registro(self.con, self.ruta_xlsx)
+        libro = self.leer()
+        hoja = libro[excel.HOJA_RECIPES]
+        self.assertEqual(hoja["A2"].value, "EC-2026-0007")
+        self.assertEqual(hoja["B2"].value, recipe_viejo)
+        self.assertEqual(libro[excel.HOJA_MEDICAMENTOS]["A2"].value, "EC-2026-0007")
+        libro.close()
+
+    def test_el_numero_interno_es_numero_y_no_texto(self):
+        """Para que Excel ordene 9 antes que 10 al filtrar la columna."""
+        recipe = self.emitir()
+        excel.regenerar_registro(self.con, self.ruta_xlsx)
+        libro = self.leer()
+        self.assertIsInstance(libro[excel.HOJA_RECIPES]["B2"].value, int)
+        self.assertIsInstance(libro[excel.HOJA_MEDICAMENTOS]["B2"].value, int)
+        self.assertEqual(libro[excel.HOJA_MEDICAMENTOS]["B2"].value, int(recipe["id"]))
         libro.close()
 
     def test_hoja_medicamentos_una_fila_por_renglon(self):
@@ -181,12 +266,12 @@ class TestContenido(BaseConDatos):
 
         primera = [c.value for c in hoja[2]]
         self.assertEqual(primera, [
-            recipe["codigo"], "2026-08-14", "Juan Pérez",
+            recipe["codigo"], int(recipe["id"]), "2026-08-14", "Juan Pérez",
             "Amoxicilina", "500 mg", "20 tabletas", "1 cada 8 horas", "Con las comidas",
         ])
         segunda = [c.value for c in hoja[3]]
-        self.assertEqual(segunda[3], "Ibuprofeno")
-        self.assertEqual(segunda[6], "1 cada 12 horas")
+        self.assertEqual(segunda[4], "Ibuprofeno")
+        self.assertEqual(segunda[7], "1 cada 12 horas")
         libro.close()
 
     def test_orden_por_fecha_descendente(self):
@@ -211,12 +296,12 @@ class TestContenido(BaseConDatos):
         hoja = libro[excel.HOJA_RECIPES]
         # Orden por fecha DESC: primero el emitido (14), después el anulado (13).
         self.assertEqual(hoja["A2"].value, emitido["codigo"])
-        self.assertEqual(hoja["H2"].value, excel.ESTADO_EMITIDO)
+        self.assertEqual(hoja["I2"].value, excel.ESTADO_EMITIDO)
         self.assertFalse(hoja["A2"].font.strike)
 
         self.assertEqual(hoja["A3"].value, anulado["codigo"])
-        self.assertEqual(hoja["H3"].value, excel.ESTADO_ANULADO)
-        self.assertEqual(hoja["I3"].value, "Error en la dosis")
+        self.assertEqual(hoja["I3"].value, excel.ESTADO_ANULADO)
+        self.assertEqual(hoja["J3"].value, "Error en la dosis")
         for celda in hoja[3]:
             self.assertTrue(celda.font.strike, f"celda sin tachar: {celda.coordinate}")
             self.assertEqual(celda.font.color.rgb, "FF808080")
@@ -234,15 +319,15 @@ class TestContenido(BaseConDatos):
         recipe = self.emitir()
         excel.regenerar_registro(self.con, self.ruta_xlsx)
         libro = self.leer()
-        self.assertEqual(libro[excel.HOJA_RECIPES]["H2"].value, excel.ESTADO_EMITIDO)
+        self.assertEqual(libro[excel.HOJA_RECIPES]["I2"].value, excel.ESTADO_EMITIDO)
         libro.close()
 
         basedatos.anular_recipe(self.con, int(recipe["id"]), "Paciente equivocado")
         excel.regenerar_registro(self.con, self.ruta_xlsx)
         libro = self.leer()
         hoja = libro[excel.HOJA_RECIPES]
-        self.assertEqual(hoja["H2"].value, excel.ESTADO_ANULADO)
-        self.assertEqual(hoja["I2"].value, "Paciente equivocado")
+        self.assertEqual(hoja["I2"].value, excel.ESTADO_ANULADO)
+        self.assertEqual(hoja["J2"].value, "Paciente equivocado")
         # El récipe sigue estando: se anula, no se borra (§2.4).
         self.assertEqual(hoja["A2"].value, recipe["codigo"])
         self.assertEqual(hoja.max_row, 2)
@@ -271,11 +356,11 @@ class TestContenido(BaseConDatos):
         excel.regenerar_registro(self.con, self.ruta_xlsx)
         libro = self.leer()
         hoja = libro[excel.HOJA_RECIPES]
-        self.assertEqual(hoja["C2"].value, "Sin Cédula")
-        self.assertIn(hoja["D2"].value, (None, ""))
+        self.assertEqual(hoja["D2"].value, "Sin Cédula")
         self.assertIn(hoja["E2"].value, (None, ""))
         self.assertIn(hoja["F2"].value, (None, ""))
-        self.assertEqual(hoja["H2"].value, excel.ESTADO_EMITIDO)
+        self.assertIn(hoja["G2"].value, (None, ""))
+        self.assertEqual(hoja["I2"].value, excel.ESTADO_EMITIDO)
         libro.close()
 
 

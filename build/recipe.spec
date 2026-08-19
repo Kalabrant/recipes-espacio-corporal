@@ -21,8 +21,13 @@ Tres decisiones que no se cambian sin releer §11:
 Exclusiones: `numpy` y `PyMuPDF` (`fitz`) están instalados en la máquina de
 desarrollo —se usaron para medir el PDF modelo en la Fase 0 y para verificar los
 PDF en las pruebas— pero **ningún módulo de `app/` los importa** (verificado
-sobre los `import` de los siete módulos). Adentro del paquete solo sumarían
+sobre los `import` de los diez módulos). Adentro del paquete solo sumarían
 decenas de megas. `tkinter` tampoco: la ventana la pone pywebview.
+
+`Pillow` sí viaja adentro desde la 2.0: la bandeja de mediciones y los anexos lo
+usan en caliente (miniaturas, medidas y orientación EXIF) y la página de anexo
+del informe también. Se importa con `from PIL import Image` adentro de las
+funciones, así que PyInstaller lo detecta solo; no hace falta listarlo.
 """
 
 import os
@@ -39,6 +44,7 @@ RECURSOS = os.path.join(RAIZ, "recursos")
 datas = [
     (os.path.join(APP, "web"), "web"),                       # index/estilos/js
     (os.path.join(RECURSOS, "logo.png"), "recursos"),        # encabezado del PDF
+    (os.path.join(RECURSOS, "firma.png"), "recursos"),       # firma del informe (dec. 9)
     (os.path.join(RECURSOS, "fuentes"), "recursos/fuentes"), # Lato embebida
 ]
 # Perfil de color sRGB de fpdf2: no lo detecta el análisis de imports.
@@ -53,6 +59,9 @@ hiddenimports = [
     "app.basedatos",
     "app.codigos",
     "app.excel",
+    "app.pdf_comun",
+    "app.pdf_historia",
+    "app.pdf_informe",
     "app.pdf_recipe",
     "app.respaldo",
     "app.rutas",
@@ -65,9 +74,15 @@ excludes = [
     "fitz_old",
     "tkinter",          # la ventana la pone pywebview
     "tests",            # la suite no se distribuye
-    "test_codigos",
-    "test_excel",
+    "test_codigos",     # los tests viven al lado de `app/` y comparten pathex:
+    "test_excel",       # se nombran uno por uno para que ninguno se cuele
+    "test_historia",
+    "test_pdf_comun",
+    "test_pdf_historia",
+    "test_pdf_informe",
+    "test_pdf_recipe",
     "test_respaldo",
+    "test_rutas",
     "matplotlib",
     "pandas",
     "scipy",

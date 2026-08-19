@@ -190,8 +190,8 @@ Encabezados fijos, columnas anchas, filtro automático. Si el archivo está bloq
 Antes de dar por terminado, verificá una por una:
 
 - [ ] Con Wi-Fi apagado, la app abre, emite un récipe y genera el PDF.
-- [ ] Emitir tres récipes seguidos da `EC-2026-0001`, `-0002`, `-0003`.
-- [ ] Cambiando la fecha del sistema a enero siguiente, el próximo récipe es `EC-2027-0001`.
+- [ ] *(Actualizado en la 2.0 — dec. 1 y 2 de la evolución: el código es POR PACIENTE, correlativo de por vida.)* Dar de alta tres pacientes seguidos da `EC-0001`, `EC-0002`, `EC-0003`.
+- [ ] *(Actualizado en la 2.0.)* Todos los récipes de un mismo paciente llevan SU código; el segundo del mismo día genera archivo `_v2`, nunca sobrescribe, y el historial los distingue por fecha.
 - [ ] En los tests, el secuencial 9999 pasa a `EC-2026-10000` sin romper el formato.
 - [ ] Anular un récipe no libera su número.
 - [ ] El PDF generado, impreso a color, coincide con el modelo de `referencias/`.

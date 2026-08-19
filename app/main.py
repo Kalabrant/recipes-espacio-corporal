@@ -28,6 +28,7 @@ import argparse
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -65,11 +66,36 @@ def _raiz_recursos() -> Path:
 RAIZ_PROYECTO = _raiz_recursos()
 
 #: Subcarpetas de la carpeta de datos del médico (§4). Sin tildes ni eñes.
-SUBCARPETAS = ("datos", "pdf", "registro", "respaldos", "recursos")
+#:
+#: `entrada` es la de dec. 11: el buzón donde el médico suelta las mediciones
+#: que le llegan por WhatsApp. La bandeja de la historia la mira junto con
+#: Descargas y el Escritorio, así que funciona sin configurar nada.
+SUBCARPETAS = ("datos", "pdf", "registro", "respaldos", "recursos", "entrada")
 
 #: Recursos que se copian a la carpeta del médico en el primer arranque, para
 #: que pueda reemplazarlos desde Configuración sin tocar la instalación.
 RECURSOS_A_COPIAR = ("logo.png",)
+
+#: Nombre del acceso directo del Escritorio que apunta a `entrada` (dec. 11).
+NOMBRE_ACCESO_ENTRADA = "MEDICIONES — soltar aquí.lnk"
+
+#: Marca en `config` de que el acceso directo ya se intentó. Vale ``"1"`` si
+#: se creó y ``"fallo"`` si PowerShell no dejó: en los dos casos no se vuelve a
+#: intentar en cada arranque. Si falló, el hueco lo cubre el botón «Abrir
+#: carpeta de entrada» de la pantalla de la historia.
+CLAVE_ACCESO_ENTRADA = "acceso_entrada"
+
+#: Lo que se corre para crear el `.lnk` sin pywin32 (§3: nada de dependencias
+#: nuevas). Las rutas viajan por variables de entorno y no adentro del texto:
+#: así ninguna comilla ni acento del nombre del usuario puede romper el script.
+SCRIPT_ACCESO_DIRECTO = (
+    "$s = New-Object -ComObject WScript.Shell; "
+    "$l = $s.CreateShortcut($env:RECIPES_LNK); "
+    "$l.TargetPath = $env:RECIPES_ENTRADA; "
+    "$l.WorkingDirectory = $env:RECIPES_ENTRADA; "
+    "$l.Description = 'Mediciones para la historia clinica'; "
+    "$l.Save()"
+)
 
 
 # --------------------------------------------------------------------------
@@ -108,6 +134,100 @@ def preparar_carpeta_datos(destino: Path | None = None) -> Path:
         if origen.is_file() and not copia.exists():
             shutil.copyfile(origen, copia)
     return destino
+
+
+# --------------------------------------------------------------------------
+# Acceso directo del Escritorio a la carpeta de entrada (dec. 11)
+# --------------------------------------------------------------------------
+
+def carpeta_escritorio() -> Path | None:
+    """El Escritorio de verdad de esta máquina, o ``None`` si no se encuentra.
+
+    En esta computadora OneDrive se llevó el Escritorio, así que hay que
+    probar también ``OneDrive\\Escritorio`` y ``OneDrive\\Desktop``. Gana la
+    primera que exista de verdad: crear el acceso directo en una carpeta que
+    Windows no muestra sería peor que no crearlo.
+    """
+    perfil = Path(os.environ.get("USERPROFILE") or Path.home())
+    raices = [perfil]
+    desde_onedrive = (os.environ.get("ONEDRIVE") or "").strip()
+    if desde_onedrive:
+        raices.append(Path(desde_onedrive))
+    raices.append(perfil / "OneDrive")
+    for raiz in raices:
+        for nombre in ("Desktop", "Escritorio"):
+            candidata = raiz / nombre
+            if candidata.is_dir():
+                return candidata
+    return None
+
+
+def crear_acceso_entrada(con: sqlite3.Connection, dir_datos: Path) -> str:
+    """Deja «MEDICIONES — soltar aquí» en el Escritorio, **una sola vez**.
+
+    Se hace con un `.lnk` de verdad —el que Windows entiende para soltarle
+    archivos encima— generado por WScript.Shell a través de PowerShell. No se
+    usa pywin32 porque §3 prohíbe dependencias nuevas y esto se corre una vez
+    en la vida de la instalación.
+
+    Devuelve qué pasó: ``"1"`` creado, ``"ya"`` ya estaba hecho, ``"fallo"`` no
+    se pudo. **Nunca levanta**: que PowerShell esté restringido por política de
+    la empresa, o que el Escritorio esté en un OneDrive desconectado, no puede
+    impedir que el médico abra la aplicación; el botón «Abrir carpeta de
+    entrada» de la pantalla de la historia cubre el hueco.
+
+    Qué se reintenta y qué no, que no es lo mismo:
+
+    - Si PowerShell **corrió y falló** (política restringida, permisos), queda
+      anotado en `config` y no se vuelve a intentar: reintentarlo en cada
+      arranque sería lanzar un proceso al pedo todas las mañanas.
+    - Si **no se encontró el Escritorio**, no se anota nada y el próximo
+      arranque vuelve a mirar. Eso no es un fallo permanente: es un OneDrive
+      que todavía no montó la carpeta, y el día que aparezca el acceso directo
+      se crea solo. Buscarlo cuesta dos `is_dir()`.
+    """
+    if basedatos.obtener_config(con, CLAVE_ACCESO_ENTRADA):
+        return "ya"
+    if os.name != "nt":
+        return "fallo"
+
+    escritorio = carpeta_escritorio()
+    if escritorio is None:
+        return "fallo"
+
+    entrada = dir_datos / "entrada"
+    entrada.mkdir(parents=True, exist_ok=True)
+    destino = escritorio / NOMBRE_ACCESO_ENTRADA
+    if destino.exists():  # lo dejó una instalación anterior: nada que hacer
+        basedatos.guardar_config(con, CLAVE_ACCESO_ENTRADA, "1")
+        return "ya"
+
+    entorno = dict(os.environ)
+    entorno["RECIPES_LNK"] = str(destino)
+    entorno["RECIPES_ENTRADA"] = str(entrada)
+    try:
+        terminado = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive",
+             "-ExecutionPolicy", "Bypass", "-Command", SCRIPT_ACCESO_DIRECTO],
+            env=entorno, capture_output=True, text=True, timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as err:
+        print(f"Acceso directo de mediciones: no se pudo crear ({err}).")
+        basedatos.guardar_config(con, CLAVE_ACCESO_ENTRADA, "fallo")
+        return "fallo"
+
+    if terminado.returncode != 0 or not destino.exists():
+        detalle = (terminado.stderr or terminado.stdout or "").strip()[:200]
+        print("Acceso directo de mediciones: no se pudo crear "
+              f"({detalle or 'PowerShell no lo permitió'}). La carpeta está en "
+              f"{entrada}.")
+        basedatos.guardar_config(con, CLAVE_ACCESO_ENTRADA, "fallo")
+        return "fallo"
+
+    basedatos.guardar_config(con, CLAVE_ACCESO_ENTRADA, "1")
+    print(f"Acceso directo de mediciones creado en {destino}")
+    return "1"
 
 
 def pin_configurado(con: sqlite3.Connection) -> bool:
@@ -207,6 +327,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Primer arranque de la semana: ZIP de datos\ y registro\ (§10).
         respaldo_de_la_semana(con, dir_datos)
+        # Una sola vez en la vida de la instalación: el acceso directo del
+        # Escritorio a la carpeta de mediciones (dec. 11). Nunca frena el
+        # arranque; si no se pudo, queda anotado y no se reintenta.
+        try:
+            crear_acceso_entrada(con, dir_datos)
+        except Exception as err:
+            print(f"Acceso directo de mediciones: {err}")
         # Si hay PIN, la interfaz arranca en la pantalla de bloqueo (§10).
         pin_configurado(con)
     finally:

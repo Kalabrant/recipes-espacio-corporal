@@ -1,4 +1,4 @@
-# Publicar una versión
+﻿# Publicar una versión
 
 Manual del que mantiene el proyecto. El manual del médico es [`../README.md`](../README.md).
 
@@ -22,8 +22,8 @@ py -3 -m pip install flask pywebview fpdf2 openpyxl Pillow PyMuPDF pyinstaller
 
 Qué es cada una:
 
-- **De la app** (van adentro del `.exe`): `flask`, `pywebview`, `fpdf2`, `openpyxl`.
-- **De herramientas** (no se empaquetan): `Pillow` y `numpy` para `build/preparar_recursos.py`, `PyMuPDF` para las comparaciones del PDF contra el modelo, `pyinstaller` para el empaquetado.
+- **De la app** (van adentro del `.exe`): `flask`, `pywebview`, `fpdf2`, `openpyxl` y —desde la 2.0— `Pillow`, que es lo que arma las miniaturas de la bandeja de mediciones, lee las medidas y la orientación EXIF de los anexos y prepara la imagen de la página de anexo del informe.
+- **De herramientas** (no se empaquetan): `numpy` para `build/preparar_recursos.py`, `PyMuPDF` para las comparaciones del PDF contra el modelo, `pyinstaller` para el empaquetado.
 
 **No agregues dependencias.** Cada paquete extra es riesgo de empaquetado, y §2 prohíbe red, CDN y npm: si algo pide bajar una fuente, un ícono o un script de internet, no entra.
 
@@ -78,7 +78,7 @@ Es un paso de una sola vez. No hace falta antes de cada release, y no es código
 py -3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-**94 tests, todos en verde.** No se publica nada con un test roto. Si agregaste código, agregá tests: `codigos.py` es la pieza que no puede fallar (reinicio de año, concurrencia, relleno de ceros, desborde a cinco dígitos, no reutilización tras anulación).
+**511 tests, todos en verde.** No se publica nada con un test roto. Si agregaste código, agregá tests: `codigos.py` es la pieza que no puede fallar (reinicio de año, concurrencia, relleno de ceros, desborde a cinco dígitos, no reutilización tras anulación).
 
 Un módulo suelto, mientras iterás:
 
@@ -113,7 +113,7 @@ Inno Setup, con el `.iss` del repo:
 Para pasarle la versión sin editar el archivo, si el `.iss` define `MiVersion`:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DMiVersion=1.0.0 "build\instalador.iss"
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DMiVersion=2.0.0 "build\instalador.iss"
 ```
 
 Lo que el instalador tiene que cumplir (§11) y conviene releer si lo tocás:
@@ -133,8 +133,8 @@ La carpeta y el nombre exactos de salida los fija el `.iss` en `OutputDir` / `Ou
 **No es opcional y no se hace de memoria.** Es la lista de criterios de aceptación de las instrucciones, verificada una por una sobre el instalador que vas a publicar —no sobre el código corriendo desde el fuente—:
 
 - [ ] Con Wi-Fi apagado, la app abre, emite un récipe y genera el PDF.
-- [ ] Emitir tres récipes seguidos da `EC-2026-0001`, `-0002`, `-0003`.
-- [ ] Cambiando la fecha del sistema a enero siguiente, el próximo récipe es `EC-2027-0001`.
+- [ ] *(2.0 — código por paciente.)* Dar de alta tres pacientes seguidos da `EC-0001`, `EC-0002`, `EC-0003`.
+- [ ] *(2.0.)* Todos los récipes de un paciente llevan su código; el segundo del mismo día sale `_v2` sin sobrescribir.
 - [ ] En los tests, el secuencial 9999 pasa a `EC-2026-10000` sin romper el formato.
 - [ ] Anular un récipe no libera su número.
 - [ ] El PDF generado, impreso a color, coincide con el modelo de `referencias/`.
@@ -148,7 +148,7 @@ La carpeta y el nombre exactos de salida los fija el `.iss` en `OutputDir` / `Ou
 
 Las dos últimas son las que solo se pueden probar con el instalador en la mano, y son justo las que arruinan al médico si fallan. La de "instalar encima" se prueba así: instalá la versión vieja, emití dos récipes, instalá la nueva encima, abrí y verificá que los dos récipes sigan en el Historial y que el PDF se abra.
 
-Actualizá también `VERSION_APP` en `app/rutas.py` (hoy `1.0.0`) y que coincida con la versión del `.iss` y con el tag de la Release. El médico ve ese número al pie de Configuración: si dice una cosa y el instalador otra, no hay forma de saber qué tiene instalado.
+Actualizá también `VERSION_APP` en `app/rutas.py` (hoy `2.0.0`) y que coincida con la versión del `.iss` y con el tag de la Release. El médico ve ese número al pie de Configuración: si dice una cosa y el instalador otra, no hay forma de saber qué tiene instalado.
 
 ---
 
@@ -180,14 +180,14 @@ py -3 -m PyInstaller --noconfirm --clean build/recipe.spec
 
 # 4. Commit y tag
 git add -A
-git commit -m "Version 1.0.1"
-git tag -a v1.0.1 -m "Version 1.0.1"
+git commit -m "Version 2.0.0"
+git tag -a v2.0.0 -m "Version 2.0.0"
 git push origin main --follow-tags
 
 # 5. Release con el instalador adjunto
-gh release create v1.0.1 "build\salida\RecipesEspacioCorporal-1.0.1-Setup.exe" `
+gh release create v2.0.0 "build\salida\RecipesMedicos-Setup-2.0.0.exe" `
   --repo Kalabrant/recipes-espacio-corporal `
-  --title "Récipes — Espacio Corporal 1.0.1" `
+  --title "Récipes — Espacio Corporal 2.0.0" `
   --notes "Qué cambió en esta versión, en dos o tres renglones, en criollo."
 ```
 
@@ -196,7 +196,7 @@ Ajustá la ruta del `.exe` a lo que haya producido ISCC (`OutputDir` del `.iss`)
 Después de publicar:
 
 ```powershell
-gh release view v1.0.1 --repo Kalabrant/recipes-espacio-corporal --web
+gh release view v2.0.0 --repo Kalabrant/recipes-espacio-corporal --web
 ```
 
 y **copiá el enlace de esa página**: es el que reemplaza el marcador `{{ENLACE_DESCARGA}}` del `README.md`. Conviene usar la URL que siempre apunta a la última:

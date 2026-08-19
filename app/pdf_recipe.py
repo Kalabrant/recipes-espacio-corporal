@@ -28,18 +28,33 @@ Decisiones del medico que este modulo obedece (no las discutas en codigo):
        es asunto de la farmacia) y debajo de cada uno van su dosis y sus
        indicaciones; despues, separado, el bloque de indicaciones generales.
   6. Sin vigencia.             8. El diagnostico NO se imprime.
-  7. El codigo unico va arriba a la derecha de CADA mitad.
+  7. El codigo va arriba a la derecha de CADA mitad. Desde la 2.0 el que llega
+     es el codigo DEL PACIENTE ('EC-0001', correlativo de por vida sin anio,
+     dec. 1 y 2): todos los recipes de un paciente salen con el mismo numero.
+     Para este modulo no cambia nada —recibe un texto y lo imprime igual en
+     las dos mitades—, pero el ejemplo tiene que ser el de verdad.
   9. El ornamento lateral es vectorial (Bezier + degradado), espejado.
+
+Desde la 2.0 la marca y los ladrillos de tinta viven en `pdf_comun` —los
+comparte con el informe y con la historia clinica—, pero **la salida de este
+modulo no cambio ni un punto**: lo que se movio se movio tal cual, con los
+mismos numeros y el mismo orden de operaciones. La geometria del talonario,
+el ornamento y el reparto entre mitades siguen enteros aca, que es donde
+tienen sentido: el recipe calca un papel preimpreso y no admite ni flujo
+automatico ni una segunda pagina.
 """
 
 from __future__ import annotations
 
 import os
-import sys
 from typing import Any, Mapping, Sequence
 
-from fpdf import FPDF
 from fpdf.drawing import GradientPaint, shape_linear_gradient
+
+try:  # como paquete (``from app import pdf_recipe``)
+    from . import pdf_comun
+except ImportError:  # ejecutado con ``app/`` en el sys.path (tests, scripts)
+    import pdf_comun  # type: ignore[no-redef]
 
 # =============================================================================
 # 1. GEOMETRIA DE LA HOJA
@@ -61,28 +76,25 @@ MARGEN_SUP_MM = 16.0
 # =============================================================================
 # 2. COLORES  (Parte B del analisis — medidos sobre Logo.jpg, no sobre el escaneo)
 # =============================================================================
+# Son los de la marca: viven en `pdf_comun` y se reexportan con el mismo nombre
+# para no tocar ninguna de las decenas de referencias de mas abajo.
 
-VERDE_LIMA = (154, 190, 15)      # #9ABE0F  simbolo, CORPORAL, arranque del ornamento
-TEAL_MEDIO = (21, 127, 111)      # #157F6F  script "espacio", filete y pie del ornamento
-TEAL_OSCURO = (18, 85, 80)       # #125550  "Salud y Bienestar", "Rp.", "Ind."
-GRIS_ROTULO = (74, 83, 84)       # #4A5354  Dr./CI/MPPS/Paciente/Fecha, rayas, "N.º"
-GRIS_DATO = (51, 58, 59)         # #333A3B  texto que escribe la app (algo mas oscuro)
-GRIS_CORTE = (201, 201, 201)     # #C9C9C9  linea de corte punteada
+VERDE_LIMA = pdf_comun.VERDE_LIMA    # #9ABE0F  simbolo, CORPORAL, ornamento
+TEAL_MEDIO = pdf_comun.TEAL_MEDIO    # #157F6F  script "espacio", filete y pie
+TEAL_OSCURO = pdf_comun.TEAL_OSCURO  # #125550  "Salud y Bienestar", "Rp.", "Ind."
+GRIS_ROTULO = pdf_comun.GRIS_ROTULO  # #4A5354  Dr./CI/MPPS/Paciente/Fecha, rayas
+GRIS_DATO = pdf_comun.GRIS_DATO      # #333A3B  texto que escribe la app
+GRIS_CORTE = pdf_comun.GRIS_CORTE    # #C9C9C9  linea de corte punteada
 
-VERDE_LIMA_HEX = "#9ABE0F"
-TEAL_MEDIO_HEX = "#157F6F"
+VERDE_LIMA_HEX = pdf_comun.VERDE_LIMA_HEX
+TEAL_MEDIO_HEX = pdf_comun.TEAL_MEDIO_HEX
 
 # =============================================================================
 # 3. TIPOGRAFIA  (Lato embebida; cap height de Lato = 0,7165 em)
 # =============================================================================
 
-FUENTE = "Lato"
-_ARCHIVOS_FUENTE = {
-    "": "Lato-Regular.ttf",
-    "B": "Lato-Bold.ttf",
-    "I": "Lato-Italic.ttf",
-    "BI": "Lato-BoldItalic.ttf",
-}
+FUENTE = pdf_comun.FUENTE
+_ARCHIVOS_FUENTE = pdf_comun.ARCHIVOS_FUENTE
 
 PT_SALUD = 12.0                  # "Salud y Bienestar" — se tracking-ea hasta 32,6 mm.
                                  # A 11 pt el ancho total daba bien pero las letras
@@ -96,7 +108,7 @@ PT_RP = 20.0                     # "Rp." / "Ind." bold italic
                                  #  que es lo medido en el modelo; a 18 pt daba 4,60)
 PT_ROTULO = 12.5                 # Dr.: CI: MPPS: Paciente: Fecha:
 PT_CODIGO_ROTULO = 11.0          # "N.º"
-PT_CODIGO = 13.0                 # EC-2026-0001, bold
+PT_CODIGO = 13.0                 # EC-0001 (codigo del paciente), bold
 PT_DATO = 12.0                   # nombre del paciente y fecha sobre las rayas
 PT_DATO_COMODO = 11.0            # piso hasta donde se achica ANTES de abreviar:
                                  # a 11 pt la mayuscula del nombre da 2,78 mm
@@ -135,9 +147,9 @@ LOGO_X_MM = 16.4                 # mitad Rp.  — tinta medida en 16,40
 LOGO_X_IND_MM = 17.8             # mitad Ind. — tinta medida en 17,90 local
 LOGO_Y_MM = 15.9
 LOGO_ANCHO_MM = 21.7             # lockup simbolo + "espacio CORPORAL", sin bajada
-LOGO_PROPORCION = 713 / 562      # recursos/logo.png = 713 x 562 px
+LOGO_PROPORCION = pdf_comun.LOGO_PROPORCION   # recursos/logo.png = 713 x 562 px
 
-SALUD_TEXTO = "Salud y Bienestar"
+SALUD_TEXTO = pdf_comun.SALUD_TEXTO
 SALUD_X_MM = 15.9                # mitad Rp.  — tinta medida en 15,90
 SALUD_X_IND_MM = 18.1            # mitad Ind. — tinta medida en 18,20 local
 SALUD_BASE_Y_MM = 40.1           # con PT_SALUD = 12 la "S" apoya en 40,2 igual
@@ -155,7 +167,7 @@ RP_BASE_Y_MM = 51.9              # linea de base: en el modelo la "R" apoya en 5
                                  # (mitad Rp.) y la "I" en 52,4 (mitad Ind.); 51,9
                                  # es el punto medio de las dos mitades
 
-CODIGO_ROTULO = "N.º"
+CODIGO_ROTULO = pdf_comun.CODIGO_ROTULO
 CODIGO_BASE_Y_MM = 22.6          # arriba a la derecha, a la altura del logo
 CODIGO_SEPARACION_MM = 1.8       # aire entre "N.º" y el codigo
 
@@ -301,40 +313,30 @@ ORNAMENTO_GRAD_Y0_MM = 0.0       # el degradado verde->teal recorre la altura ut
 ORNAMENTO_GRAD_Y1_MM = 175.0     # abajo de esa altura el ornamento ya es teal pleno
 
 # =============================================================================
-# 9. RUTAS POR DEFECTO
+# 9. RUTAS POR DEFECTO  (resueltas en `pdf_comun`, que sabe de PyInstaller)
 # =============================================================================
 
-_RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_RAIZ = pdf_comun._RAIZ
+_raiz_recursos = pdf_comun.raiz_recursos
 
-
-def _raiz_recursos() -> str:
-    """Dónde están `recursos/logo.png` y `recursos/fuentes/`.
-
-    Corriendo desde el código fuente es la raíz del proyecto. Empaquetado con
-    PyInstaller `--onedir` (§11.1) el `.py` vive adentro de un archivo comprimido
-    y `__file__` ya no apunta a ninguna carpeta real: los datos agregados con
-    `--add-data` quedan en ``sys._MEIPASS`` (para `--onedir`, la subcarpeta
-    ``_internal`` que está al lado del `.exe`). No hay descompresión temporal ni
-    red de por medio: son archivos en disco, al lado del ejecutable.
-    """
-    if getattr(sys, "frozen", False):
-        return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
-    return _RAIZ
-
-
-RUTA_LOGO_DEFECTO = os.path.join(_raiz_recursos(), "recursos", "logo.png")
-DIR_FUENTES_DEFECTO = os.path.join(_raiz_recursos(), "recursos", "fuentes")
+RUTA_LOGO_DEFECTO = pdf_comun.RUTA_LOGO_DEFECTO
+DIR_FUENTES_DEFECTO = pdf_comun.DIR_FUENTES_DEFECTO
 
 
 # =============================================================================
 # 10. ERRORES
 # =============================================================================
+# El recipe conserva su propia familia de errores aunque `pdf_comun` tenga una
+# equivalente: `rutas.py` engancha un manejador de Flask a CADA tipo y responde
+# un texto distinto ("volvé a cargar el logo", "sacá un medicamento"). Lo que
+# se hizo fue colgarlas del tronco comun, asi un `except pdf_comun.DocumentoError`
+# atrapa tambien las del recipe y ningun manejador viejo dejo de andar.
 
-class RecipeError(Exception):
+class RecipeError(pdf_comun.DocumentoError):
     """Error al componer el PDF del recipe."""
 
 
-class RecursoFaltanteError(RecipeError):
+class RecursoFaltanteError(pdf_comun.RecursoFaltanteError, RecipeError):
     """Falta el logo o alguna de las fuentes Lato."""
 
 
@@ -378,20 +380,12 @@ class NombreNoCabeError(RecipeError):
 # 11. UTILIDADES DE CURVAS
 # =============================================================================
 
-def _catmull_abierto(puntos: Sequence[tuple[float, float]]):
-    """Convierte una polilinea en tramos Bezier cubicos que pasan por los puntos.
-
-    Devuelve una lista de (c1, c2, destino). Catmull-Rom uniforme con los
-    extremos duplicados (tangentes naturales en las puntas).
-    """
-    p = [puntos[0], *puntos, puntos[-1]]
-    tramos = []
-    for i in range(1, len(p) - 2):
-        p0, p1, p2, p3 = p[i - 1], p[i], p[i + 1], p[i + 2]
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
-        tramos.append((c1, c2, p2))
-    return tramos
+#: Catmull-Rom uniforme con los extremos duplicados (tangentes naturales en
+#: las puntas): devuelve tramos ``(c1, c2, destino)`` que pasan exactamente por
+#: los puntos medidos. Es geometria pura y vive en `pdf_comun`, pero hoy la usa
+#: solo el ornamento de este modulo.
+_catmull_abierto = pdf_comun.catmull_abierto
+_catmull_cerrado = pdf_comun.catmull_cerrado
 
 
 def _interpolar(tabla: Sequence[tuple[float, float]], y: float) -> float:
@@ -418,119 +412,28 @@ def _desplazar_adentro(puntos: Sequence[tuple[float, float]],
     return [(max(0.0, x - _interpolar(tabla, y)), y) for x, y in puntos]
 
 
-def _catmull_cerrado(puntos: Sequence[tuple[float, float]]):
-    """Igual que `_catmull_abierto` pero el anillo se cierra sobre si mismo."""
-    n = len(puntos)
-    tramos = []
-    for i in range(n):
-        p0 = puntos[(i - 1) % n]
-        p1 = puntos[i]
-        p2 = puntos[(i + 1) % n]
-        p3 = puntos[(i + 2) % n]
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
-        tramos.append((c1, c2, p2))
-    return tramos
-
-
 # =============================================================================
 # 12. COMPOSITOR
 # =============================================================================
 
-class _Recipe(FPDF):
-    """Lienzo del recipe. Uso interno: la API publica son las funciones de abajo."""
+class _Recipe(pdf_comun.Lienzo):
+    """Lienzo del recipe. Uso interno: la API publica son las funciones de abajo.
+
+    De `pdf_comun.Lienzo` hereda la carga de las Lato y los helpers de tinta
+    (`_texto`, `_texto_der`, `_envolver`, `_texto_a_ancho`, `_raya`), que son
+    identicos a los que tenia aca. NO hereda de `HojaCarta`: esta hoja es
+    apaisada, tiene dos mitades y no admite una segunda pagina.
+    """
+
+    #: Los manejadores de Flask de `rutas.py` esperan el error del recipe.
+    _ERROR_RECURSO = RecursoFaltanteError
 
     def __init__(self, ruta_logo: str, dir_fuentes: str):
         # "Letter" apaisada = 279,4 x 215,9 mm exactos (11 x 8,5 in)
-        super().__init__(orientation="L", unit="mm", format="Letter")
-        self.set_auto_page_break(False)
-        self.set_margins(0, 0, 0)
-        self.set_compression(True)
+        super().__init__(dir_fuentes, orientacion="L")
         self.ruta_logo = ruta_logo
         self.estado_nombre = "completo"   # completo | abreviado | truncado
         self.nombre_impreso = ""
-        self._cargar_fuentes(dir_fuentes)
-
-    # -- recursos ----------------------------------------------------------
-    def _cargar_fuentes(self, dir_fuentes: str) -> None:
-        for estilo, archivo in _ARCHIVOS_FUENTE.items():
-            ruta = os.path.join(dir_fuentes, archivo)
-            if not os.path.isfile(ruta):
-                raise RecursoFaltanteError(
-                    f"Falta la fuente {archivo}. Esperada en: {ruta}"
-                )
-            self.add_font(FUENTE, estilo, ruta)
-
-    # -- helpers de texto --------------------------------------------------
-    def _ancho(self, texto: str, estilo: str, pt: float) -> float:
-        self.set_font(FUENTE, estilo, pt)
-        return self.get_string_width(texto)
-
-    def _envolver(self, texto: str, ancho_mm: float, estilo: str, pt: float) -> list[str]:
-        """Parte `texto` en renglones que entren en `ancho_mm`."""
-        self.set_font(FUENTE, estilo, pt)
-        renglones: list[str] = []
-        for parrafo in str(texto).replace("\r\n", "\n").split("\n"):
-            palabras = [p for p in parrafo.split(" ") if p]
-            if not palabras:
-                renglones.append("")
-                continue
-            actual = ""
-            for palabra in palabras:
-                tanteo = palabra if not actual else f"{actual} {palabra}"
-                if self.get_string_width(tanteo) <= ancho_mm or not actual:
-                    if self.get_string_width(tanteo) > ancho_mm and not actual:
-                        # palabra sola mas ancha que la columna: se corta duro
-                        trozo = ""
-                        for caracter in palabra:
-                            if self.get_string_width(trozo + caracter) > ancho_mm and trozo:
-                                renglones.append(trozo)
-                                trozo = caracter
-                            else:
-                                trozo += caracter
-                        actual = trozo
-                    else:
-                        actual = tanteo
-                else:
-                    renglones.append(actual)
-                    actual = palabra
-            renglones.append(actual)
-        return renglones
-
-    def _texto(self, x: float, base_y: float, texto: str, estilo: str, pt: float,
-               color: tuple[int, int, int]) -> float:
-        self.set_font(FUENTE, estilo, pt)
-        self.set_text_color(*color)
-        self.text(x, base_y, texto)
-        return self.get_string_width(texto)
-
-    def _texto_der(self, x_der: float, base_y: float, texto: str, estilo: str,
-                   pt: float, color: tuple[int, int, int]) -> float:
-        ancho = self._ancho(texto, estilo, pt)
-        self._texto(x_der - ancho, base_y, texto, estilo, pt, color)
-        return ancho
-
-    def _texto_a_ancho(self, x: float, base_y: float, texto: str, estilo: str,
-                       pt: float, color: tuple[int, int, int], ancho_mm: float) -> None:
-        """Escribe `texto` estirando el interletrado hasta ocupar `ancho_mm`.
-
-        Es lo que hace el talonario con "Salud y Bienestar": mismo cuerpo que el
-        resto pero tracking apenas abierto para llegar al ancho del logo.
-        """
-        natural = self._ancho(texto, estilo, pt)
-        huecos = max(len(texto) - 1, 1)
-        # set_char_spacing trabaja en puntos tipograficos
-        extra_pt = (ancho_mm - natural) / huecos / 0.352777778
-        self.set_char_spacing(extra_pt)
-        self._texto(x, base_y, texto, estilo, pt, color)
-        self.set_char_spacing(0)
-
-    # -- helpers de trazo --------------------------------------------------
-    def _raya(self, x0: float, x1: float, y: float, grosor: float,
-              color: tuple[int, int, int] = GRIS_ROTULO) -> None:
-        self.set_draw_color(*color)
-        self.set_line_width(grosor)
-        self.line(x0, y, x1, y)
 
     # =====================================================================
     # ORNAMENTO
@@ -645,21 +548,19 @@ class _Recipe(FPDF):
         Las tres x llegan por parametro porque las dos mitades del talonario no
         registran igual: la Ind. esta corrida 1,4-2,2 mm a la derecha (ver §4).
         """
-        alto_logo = LOGO_ANCHO_MM / LOGO_PROPORCION
-        self.image(self.ruta_logo, x=ox + logo_x, y=LOGO_Y_MM,
-                   w=LOGO_ANCHO_MM, h=alto_logo)
+        self._logo(self.ruta_logo, ox + logo_x, LOGO_Y_MM, LOGO_ANCHO_MM)
 
         self._texto_a_ancho(ox + salud_x, SALUD_BASE_Y_MM, SALUD_TEXTO,
                             "", PT_SALUD, TEAL_OSCURO, SALUD_ANCHO_MM)
 
         self._texto(ox + rp_x, RP_BASE_Y_MM, rotulo, "BI", PT_RP, TEAL_OSCURO)
 
-        # Codigo unico, arriba a la derecha, sobre la guia de las rayas.
-        ancho_cod = self._texto_der(ox + GUIA_DER_MM, CODIGO_BASE_Y_MM,
-                                    codigo, "B", PT_CODIGO, GRIS_ROTULO)
-        self._texto_der(ox + GUIA_DER_MM - ancho_cod - CODIGO_SEPARACION_MM,
-                        CODIGO_BASE_Y_MM, CODIGO_ROTULO, "", PT_CODIGO_ROTULO,
-                        GRIS_ROTULO)
+        # Codigo del paciente, arriba a la derecha, sobre la guia de las rayas.
+        # Es el MISMO texto en las dos mitades: se dibuja con estas dos lineas
+        # desde cada llamada de _encabezado, una por mitad (decision 7).
+        self._codigo_der(ox + GUIA_DER_MM, CODIGO_BASE_Y_MM, codigo,
+                         pt_codigo=PT_CODIGO, pt_rotulo=PT_CODIGO_ROTULO,
+                         separacion=CODIGO_SEPARACION_MM, color=GRIS_ROTULO)
 
     # =====================================================================
     # PIE: colegiatura y renglon paciente / fecha
@@ -958,16 +859,9 @@ ALTO_DISPONIBLE_RP_MM = CUERPO_RP_Y1_MM - CUERPO_Y0_MM
 ALTO_DISPONIBLE_IND_MM = CUERPO_IND_Y1_MM - CUERPO_Y0_MM
 
 
-def _formatear_fecha(valor: Any) -> str:
-    """Acepta 'dd/mm/aaaa', ISO 'aaaa-mm-dd' o un date/datetime."""
-    if valor is None:
-        return ""
-    if hasattr(valor, "strftime"):
-        return valor.strftime("%d/%m/%Y")
-    texto = str(valor).strip()
-    if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
-        return f"{texto[8:10]}/{texto[5:7]}/{texto[0:4]}"
-    return texto
+#: Acepta 'dd/mm/aaaa', ISO 'aaaa-mm-dd' o un date/datetime (en `pdf_comun`,
+#: que la comparte con el informe y con la historia).
+_formatear_fecha = pdf_comun.formatear_fecha
 
 
 def medir_contenido(datos: Mapping[str, Any], *,
@@ -1003,7 +897,8 @@ def generar_recipe(datos: Mapping[str, Any], ruta_salida: str, *,
 
     `datos` es un dict plano — el modulo NO consulta la base de datos:
 
-        codigo                 str   'EC-2026-0001'
+        codigo                 str   'EC-0001'  (el del PACIENTE, dec. 2; se
+                                     imprime igual en las dos mitades)
         fecha_emision          str|date  '14/08/2026' o '2026-08-14'
         paciente_nombre        str
         items                  list[dict] con:
@@ -1047,7 +942,7 @@ def generar_recipe(datos: Mapping[str, Any], ruta_salida: str, *,
 
 if __name__ == "__main__":
     EJEMPLO = {
-        "codigo": "EC-2026-0001",
+        "codigo": "EC-0001",
         "fecha_emision": "14/08/2026",
         "paciente_nombre": "María Fernanda Rodríguez Blanco",
         "items": [

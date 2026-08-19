@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Respaldos de la carpeta del médico (§10).
 
-Un ZIP con ``datos\\`` y ``registro\\`` adentro, guardado en ``respaldos\\``,
-al primer arranque de cada semana y también a pedido desde Configuración.
-Se conservan los últimos 8.
+Un ZIP con ``datos\\``, ``registro\\`` y ``pacientes\\`` adentro, guardado en
+``respaldos\\``, al primer arranque de cada semana y también a pedido desde
+Configuración. Se conservan los últimos 8.
 
 Tres decisiones que valen la pena explicar:
 
@@ -46,10 +46,26 @@ except ImportError:  # con ``app/`` en el sys.path (tests, scripts)
 #: Subcarpeta donde viven los ZIP (§4).
 DIR_RESPALDOS = "respaldos"
 
-#: Qué entra en el respaldo: la base y el registro Excel (§10).
-#: Los PDF no van: son muchos y pesados, y se pueden volver a generar desde
-#: la base. Lo irreemplazable es `datos\`.
-CARPETAS_RESPALDADAS = ("datos", "registro")
+#: Qué entra en el respaldo: la base, el registro Excel y la carpeta de los
+#: pacientes (§10 y dec. 17).
+#:
+#: `datos\` es lo irreemplazable. `pacientes\` entra **entera** desde la 2.0
+#: porque adentro hay cosas que la base no puede reconstruir: los anexos de
+#: WhatsApp (dec. 11) son la única copia que queda de una medición —el original
+#: sale del teléfono y se pierde—, y los informes firmados son documentos
+#: entregados. Los récipes en PDF sí se podrían regenerar, pero viven en la
+#: misma carpeta y separarlos costaría más de lo que ahorra.
+#:
+#: **Ojo con el tamaño.** Hasta la 1.x el ZIP pesaba unos cientos de KB; con
+#: `pacientes\` adentro crece con cada imagen que se anexa (una foto de balanza
+#: son ~130 KB, mil anexos ~130 MB) y se conservan ocho respaldos. En el
+#: consultorio, con un puñado de anexos por paciente, no molesta. Si algún día
+#: molesta, lo que hay que hacer es un respaldo incremental o una casilla
+#: "incluir anexos" en Configuración —no sacar la carpeta y quedarse sin copia.
+#:
+#: Los récipes viejos de `pdf\` siguen fuera del respaldo: se regeneran desde
+#: la base y por eso nunca entraron.
+CARPETAS_RESPALDADAS = ("datos", "registro", "pacientes")
 
 #: Clave de `config` con la fecha del último respaldo (``AAAA-MM-DD``).
 CLAVE_ULTIMO_RESPALDO = "ultimo_respaldo"
@@ -190,9 +206,10 @@ def respaldar_ahora(dir_datos: str | os.PathLike[str],
                     dia: date | None = None) -> Path:
     """Crea el ZIP del día y devuelve su ruta (§10).
 
-    Adentro van ``datos/`` y ``registro/`` con esa misma estructura, así que
-    restaurar es descomprimir encima de la carpeta de datos. Si ya existe el
-    respaldo de hoy se agrega ``-2``, ``-3``…
+    Adentro van `CARPETAS_RESPALDADAS` con esa misma estructura, así que
+    restaurar es descomprimir encima de la carpeta de datos. Una carpeta que
+    todavía no existe (``pacientes/`` antes del primer récipe) simplemente no
+    aparece. Si ya existe el respaldo de hoy se agrega ``-2``, ``-3``…
 
     El registro Excel se copia aunque el médico lo tenga abierto: leerlo se
     puede, es escribirlo lo que no (§9).

@@ -312,6 +312,21 @@ main {
 
 .sugerencia.activa .sugerencia-detalle { color: var(--texto-suave); }
 
+/* La última opción de la lista de la Historia: crear al paciente que no está
+   (dec. 18). Va destacada y separada del resto con una línea, porque no es
+   otro paciente más: es la acción que da de alta a uno nuevo. */
+.sugerencia.sugerencia-crear {
+  border-top: 1px solid var(--linea);
+  background: #F4FAF8;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.sugerencia.sugerencia-crear.activa {
+  background: var(--teal-claro);
+  border-left-color: var(--teal);
+}
+
 /* ============================================================
    Renglones de medicamento
    ============================================================ */
@@ -538,6 +553,35 @@ main {
   font-size: 19px;
   color: var(--texto);
 }
+
+/* ---------- Banda del paciente que viene de la Historia (dec. 18) ----------
+   El récipe nunca arranca con un paciente puesto en silencio: si el formulario
+   viene predeterminado desde una historia abierta, se dice acá arriba, con el
+   código a la vista y el botón para soltarlo. */
+.banda-paciente {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--teal-claro);
+  border: 1px solid #9CC8C0;
+  border-left: 6px solid var(--teal);
+  border-radius: var(--radio);
+}
+.banda-paciente[hidden] { display: none; }
+
+.banda-paciente-texto {
+  flex: 1 1 240px;
+  margin: 0;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.banda-paciente .boton-secundario { background: var(--papel); }
 
 /* ============================================================
    Vista previa
@@ -775,10 +819,14 @@ main {
   letter-spacing: 0;
 }
 
-/* Fila anulada: gris, con el código tachado (§10) */
+/* Fila anulada: gris, con la fecha tachada (§10).
+   Antes se tachaba el código, pero desde la 2.0 el código es del PACIENTE y lo
+   comparten todos sus récipes (dec. 2): tacharlo decía que el paciente entero
+   quedaba anulado. Lo que identifica al récipe anulado es su fecha. */
 .fila-anulada { background: #F1F2F3; color: var(--texto-tenue); }
 .fila-anulada:hover { background: #ECEEEF; }
-.fila-anulada .celda-codigo {
+.fila-anulada .celda-codigo { color: var(--texto-tenue); }
+.fila-anulada .celda-fecha {
   color: var(--texto-tenue);
   text-decoration: line-through;
   text-decoration-thickness: 2px;
@@ -1375,6 +1423,808 @@ main {
   cursor: pointer;
 }
 .tutorial-saltar:hover { color: var(--teal); background: var(--teal-claro); }
+
+/* ============================================================
+   B · HISTORIA CLÍNICA
+   Una columna que scrollea. Los bloques son los mismos de
+   Configuración (`.bloque-config`), así que lo de acá agrega
+   solo lo que esa pantalla no tenía: la ficha del paciente, la
+   bandeja de imágenes, la grilla de anexos y los gráficos.
+   ============================================================ */
+.columna-historia {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 60px;
+}
+
+.archivo-oculto { display: none; }
+
+/* Título de sección con un botón a la derecha */
+.titulo-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.subtitulo-historia {
+  margin: 22px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.nota-guardado {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--teal);
+}
+.nota-guardado[hidden] { display: none; }
+
+/* ---------- Cabecera del paciente ---------- */
+.ficha-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--teal-claro);
+  border: 1px solid #BFDCD7;
+  border-radius: var(--radio);
+}
+.ficha-cabecera[hidden] { display: none; }
+
+.ficha-codigo {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--teal);
+  white-space: nowrap;
+}
+
+.ficha-identidad { flex: 1 1 240px; min-width: 0; }
+
+.ficha-nombre {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.ficha-linea {
+  margin: 2px 0 0;
+  font-size: 16px;
+  color: var(--texto-suave);
+}
+
+.ficha-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Los dos atajos que salen de la historia —récipe e informe— llevan el borde
+   teal para separarse de «Imprimir» y «Buscar otro», que son de servicio. */
+.ficha-acciones .boton-directo {
+  border-color: var(--teal);
+  font-weight: 700;
+}
+
+/* ---------- Alta de un paciente nuevo, desde la Historia (dec. 18) ---------- */
+.tarjeta-alta {
+  margin: 14px 0 4px;
+  padding: 14px 16px 16px;
+  background: #F7FBFA;
+  border: 2px solid var(--teal);
+  border-radius: var(--radio);
+}
+.tarjeta-alta[hidden] { display: none; }
+
+.tarjeta-alta .subtitulo-historia { margin-top: 4px; }
+.tarjeta-alta .nota-config { margin-bottom: 14px; }
+.tarjeta-alta .fila { margin-bottom: 12px; }
+.tarjeta-alta .botones-config { margin-top: 4px; }
+
+.fila-alta   { grid-template-columns: minmax(0, 1fr) 190px 110px; }
+.fila-alta-2 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (max-width: 1100px) {
+  .fila-alta, .fila-alta-2 { grid-template-columns: minmax(0, 1fr); }
+}
+
+.ficha-alergias {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  background: var(--ambar-fondo);
+  border: 2px solid #D9A441;
+  border-radius: var(--radio);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ambar);
+}
+.ficha-alergias[hidden] { display: none; }
+
+/* ---------- Sin paciente elegido ---------- */
+.hc-invitacion {
+  max-width: 720px;
+  margin: 10px 0 18px;
+  padding: 30px 28px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+.hc-invitacion[hidden] { display: none; }
+
+.hc-invitacion h2 { margin: 0 0 10px; font-size: 24px; color: var(--teal); }
+.hc-invitacion p  { margin: 0 0 8px; font-size: 18px; }
+.hc-invitacion .chico { font-size: 16px; color: var(--texto-suave); }
+.hc-invitacion .boton-secundario { margin-top: 10px; }
+
+/* La historia imprimible */
+.marco-historia { height: 640px; margin-top: 12px; }
+.marco-historia iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* ---------- Guía de la medición de WhatsApp (dec. 15) ---------- */
+.tarjeta-guia {
+  max-width: 980px;
+  margin: 0 0 18px;
+  padding: 22px 24px 24px;
+  background: var(--papel);
+  border: 2px solid var(--verde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+.tarjeta-guia[hidden] { display: none; }
+
+.guia-titulo {
+  margin: 0 0 6px;
+  font-size: 26px;
+  color: var(--teal);
+}
+
+.guia-sub {
+  margin: 0 0 18px;
+  font-size: 18px;
+  color: var(--texto-suave);
+  max-width: 70ch;
+}
+
+.guia-pasos {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.guia-pasos li {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.guia-numero {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: var(--teal);
+  border-radius: 50%;
+}
+
+.guia-texto { font-size: 20px; line-height: 1.4; }
+.guia-flecha { font-size: 24px; color: var(--teal); }
+
+.guia-botones {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.boton-saltar-guia { margin-left: auto; }
+
+/* ---------- Bandeja de imágenes recientes ---------- */
+.bandeja {
+  margin-top: 16px;
+  padding: 14px 16px 16px;
+  background: #F7F8F9;
+  border: 1px dashed var(--linea);
+  border-radius: var(--radio);
+}
+
+.bandeja-titulo {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.bandeja-estado {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--texto-tenue);
+}
+.bandeja-estado.con-error { color: var(--rojo); font-weight: 600; }
+
+.grilla-bandeja {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mini-bandeja {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.mini-bandeja:hover { border-color: var(--teal); background: var(--teal-claro); }
+
+.mini-imagen {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  background: #FFFFFF;
+  border: 1px solid var(--linea-suave);
+  border-radius: 4px;
+}
+
+.mini-fecha { font-size: 15px; font-weight: 700; color: var(--texto); }
+
+.mini-carpeta {
+  font-size: 13px;
+  color: var(--texto-tenue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Alimentación: 7 numeradores con su denominador ---------- */
+.grilla-alimentacion {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.alim-campo { display: flex; flex-direction: column; }
+
+.alim-campo label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  margin: 0 0 5px;
+  min-height: 42px;
+}
+
+.alim-fraccion { display: flex; align-items: center; gap: 6px; }
+
+.entrada-numerito {
+  width: 78px;
+  min-width: 78px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.alim-denominador {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--texto-suave);
+}
+
+.entrada-corta-media { max-width: 160px; }
+.area-chica { min-height: 62px; }
+
+/* Alergias: lo único de la historia que puede hacer daño si no se ve */
+.campo-alergias {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--ambar-fondo);
+  border: 2px solid #D9A441;
+  border-radius: var(--radio);
+}
+.campo-alergias label { color: var(--ambar); font-size: 17px; }
+.entrada-alergias { border-color: #D9A441; }
+.hint-alergias { color: var(--ambar); }
+
+/* ---------- Consultas ---------- */
+.boton-nueva-consulta { min-height: 50px; font-size: 18px; }
+
+.form-consulta {
+  margin-top: 16px;
+  padding: 16px 18px 18px;
+  background: #F7FAF3;
+  border: 2px solid var(--verde);
+  border-radius: var(--radio);
+}
+.form-consulta[hidden] { display: none; }
+
+.fila-consulta-arriba {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.bloque-vitales {
+  margin: 16px 0 0;
+  padding: 4px 14px 14px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+
+.grilla-vitales {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.campo-ta { grid-column: span 2; min-width: 210px; }
+.par-ta { display: flex; align-items: center; gap: 8px; }
+.ta-barra { font-size: 26px; font-weight: 700; color: var(--texto-suave); }
+
+.campo-calculado {
+  padding: 0 0 6px;
+}
+
+.valor-calculado {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--teal);
+  min-height: var(--alto-campo);
+  display: flex;
+  align-items: center;
+}
+.valor-calculado.sin-valor { color: var(--texto-tenue); }
+
+.lista-consultas { margin-top: 16px; display: grid; gap: 10px; }
+
+.consulta {
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+
+.consulta > summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 17px;
+}
+
+.consulta > summary:hover { background: var(--teal-claro); }
+.consulta[open] > summary { border-bottom: 1px solid var(--linea-suave); }
+
+.consulta-fecha { font-weight: 700; color: var(--teal); white-space: nowrap; }
+.consulta-motivo { font-weight: 600; }
+.consulta-signos { font-size: 15px; color: var(--texto-suave); }
+
+.consulta-cuerpo { padding: 14px; display: grid; gap: 12px; }
+
+.consulta-campo { margin: 0; }
+.consulta-campo strong {
+  display: block;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--texto-tenue);
+}
+.consulta-campo span { white-space: pre-wrap; font-size: 17px; }
+
+.consulta-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- Anexos guardados ---------- */
+.grilla-anexos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.tarjeta-anexo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.tarjeta-anexo:hover { border-color: var(--teal); background: var(--teal-claro); }
+
+.anexo-imagen {
+  width: 100%;
+  height: 170px;
+  object-fit: contain;
+  background: #FFFFFF;
+  border: 1px solid var(--linea-suave);
+  border-radius: 4px;
+}
+
+.anexo-fecha { font-size: 16px; font-weight: 700; }
+.anexo-tipo  { font-size: 14px; color: var(--teal); font-weight: 600; }
+.anexo-nota  { font-size: 14px; color: var(--texto-tenue); }
+
+/* ---------- Evolución ---------- */
+.leyenda-evolucion { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.leyenda-marca {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--teal);
+}
+.leyenda-medicion { background: var(--teal); }
+.leyenda-consulta { background: var(--papel); }
+
+.grilla-graficos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.grafico-tarjeta {
+  margin: 0;
+  padding: 12px 14px 14px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+
+.grafico-titulo {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.grafico-svg { display: block; width: 100%; height: auto; }
+
+.grafico-vacio { margin: 10px 0 0; font-size: 15px; color: var(--texto-tenue); }
+
+/* ---------- Diálogo de anexado ---------- */
+.modal-caja-ancha { max-width: 860px; }
+.modal-caja-ancha .modal-titulo { color: var(--teal); }
+
+.anexo-dialogo {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.anexo-previa-marco {
+  padding: 8px;
+  background: #F7F8F9;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  text-align: center;
+}
+
+.anexo-previa { max-width: 100%; max-height: 300px; display: block; margin: 0 auto; }
+.anexo-previa[hidden] { display: none; }
+
+.anexo-previa-vacia { margin: 0; font-size: 15px; color: var(--texto-tenue); }
+.anexo-previa-vacia[hidden] { display: none; }
+
+.anexo-campos { display: grid; gap: 4px; }
+
+.aviso-fecha {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--ambar-fondo);
+  border: 1px solid #D9A441;
+  border-radius: var(--radio);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ambar);
+}
+
+.plegable-valores {
+  margin-top: 18px;
+  padding: 10px 14px 14px;
+  background: #F7F8F9;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+
+.plegable-valores > summary {
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.grilla-valores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .anexo-dialogo { grid-template-columns: minmax(0, 1fr); }
+  .fila-consulta-arriba { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- Visor de anexos (lightbox propio) ---------- */
+.visor {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  display: flex;
+  flex-direction: column;
+  background: rgba(17, 24, 28, .94);
+}
+.visor[hidden] { display: none; }
+
+.visor-barra,
+.visor-pie {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, .35);
+}
+
+.visor-titulo {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 18px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.visor-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.boton-visor {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: var(--radio);
+  min-height: 42px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.boton-visor:hover { background: rgba(255, 255, 255, .25); }
+.boton-visor:disabled { opacity: .45; cursor: not-allowed; }
+.boton-visor-cerrar { background: var(--teal); border-color: var(--teal); }
+
+.visor-lienzo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+
+.visor-img {
+  display: block;
+  max-width: 100%;
+  transform-origin: top center;
+  background: #FFFFFF;
+}
+
+.visor-pie-texto {
+  margin: 0;
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 15px;
+  color: #E5E7EB;
+}
+
+/* ============================================================
+   Informes (dec. 10 y 12)
+   ============================================================ */
+.boton-nuevo-informe { min-height: 50px; font-size: 18px; }
+
+.exito-informe { margin-top: 14px; }
+.exito-informe .exito-codigo { font-size: 30px; letter-spacing: 0.5px; }
+.exito-informe .botones-config { justify-content: center; }
+
+/* ---------- Formulario ---------- */
+.form-informe { margin-top: 16px; }
+
+.etiqueta-fila {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.etiqueta-fila label { margin-bottom: 6px; }
+
+.boton-chico {
+  min-height: 38px;
+  font-size: 15px;
+  padding: 2px 12px;
+  margin-bottom: 6px;
+}
+
+.area-informe { min-height: 170px; }
+
+.aviso-deshacer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  font-size: 16px;
+  color: var(--teal);
+  background: var(--teal-claro);
+  border: 1px solid #BBD7D2;
+  border-radius: var(--radio);
+}
+.aviso-deshacer[hidden] { display: none; }
+.aviso-deshacer span { flex: 1 1 auto; min-width: 0; }
+
+/* ---------- Los dos tipos, explicados ---------- */
+.bloque-tipos { margin-bottom: 18px; }
+
+.grilla-tipos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.tipo-informe {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-areas: "radio nombre" ".     para";
+  column-gap: 10px;
+  row-gap: 4px;
+  padding: 14px;
+  background: var(--papel);
+  border: 2px solid var(--linea);
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+.tipo-informe:hover { border-color: var(--teal); background: var(--teal-claro); }
+.tipo-informe:focus-within { border-color: var(--teal); }
+.tipo-informe.elegido { border-color: var(--teal); background: var(--teal-claro); }
+
+.tipo-informe input { grid-area: radio; width: 22px; height: 22px; accent-color: var(--teal); }
+.tipo-nombre {
+  grid-area: nombre;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--texto);
+}
+.tipo-para { grid-area: para; font-size: 15px; color: var(--texto-suave); }
+
+/* ---------- Anexos opt-in ---------- */
+.bloque-anexos-informe { margin-top: 18px; }
+.grilla-anexos-informe { margin-top: 10px; }
+
+.anexo-elegible {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+  background: var(--papel);
+  border: 2px solid var(--linea);
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+.anexo-elegible:hover { border-color: var(--teal); background: var(--teal-claro); }
+.anexo-elegible:focus-within { border-color: var(--teal); }
+.anexo-elegible.marcado { border-color: var(--teal); background: var(--teal-claro); }
+
+.anexo-casilla { display: flex; align-items: center; gap: 8px; }
+.anexo-casilla input { width: 22px; height: 22px; accent-color: var(--teal); }
+.anexo-casilla span { font-size: 16px; font-weight: 700; }
+
+.anexo-elegible .anexo-imagen { height: 120px; margin-top: 4px; }
+
+.anexo-archivo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 96px;
+  padding: 8px;
+  font-size: 15px;
+  word-break: break-all;
+  color: var(--texto-suave);
+  background: #F4F5F7;
+  border: 1px dashed var(--linea);
+  border-radius: var(--radio);
+}
+
+.anexo-no-va { font-size: 14px; color: var(--ambar); }
+
+.anexo-elegible.sin-uso { opacity: .75; cursor: default; }
+.anexo-elegible.sin-uso:hover { border-color: var(--linea); background: var(--papel); }
+
+.hint-anexos-marcados { margin-top: 10px; font-weight: 600; color: var(--teal); }
+.hint-anexos-marcados[hidden] { display: none; }
+
+.boton-generar-informe { min-height: 56px; font-size: 20px; }
+
+/* ---------- El PDF guardado ---------- */
+.pdf-informe { margin: 18px 0 6px; }
+.pdf-informe[hidden] { display: none; }
+
+/* ---------- La lista ---------- */
+.lista-informes { margin-top: 16px; display: grid; gap: 10px; }
+
+.informe {
+  padding: 14px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+.informe.anulado { background: #F1F2F3; }
+
+.informe-cabecera {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.informe-fecha { font-weight: 700; color: var(--teal); white-space: nowrap; }
+.informe-tipo { font-size: 18px; font-weight: 600; }
+
+.informe-dato { margin: 8px 0 0; font-size: 17px; }
+.informe-dato strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--texto-tenue);
+}
+
+.informe-sin-pdf { margin: 8px 0 0; font-size: 15px; color: var(--ambar); }
+.informe .acciones-fila { margin-top: 12px; }
+.informe.anulado .informe-fecha,
+.informe.anulado .informe-tipo,
+.informe.anulado .informe-dato { color: var(--texto-tenue); }
+
+@media (max-width: 900px) {
+  .grilla-tipos { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ============================================================
    Pantallas de la próxima fase
