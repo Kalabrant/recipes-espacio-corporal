@@ -25,7 +25,7 @@
 ; =============================================================================
 
 #define MiNombre       "Récipes Espacio Corporal"
-#define MiVersion      "2.0.0"
+#define MiVersion      "2.0.1"
 #define MiEditor       "Espacio Corporal"
 #define MiEjecutable   "RecipesMedicos.exe"
 #define MiCarpetaDist  "dist\RecipesMedicos"

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Endpoints Flask de la app de récipes (§7-A de las instrucciones).
 
 Todo es local: el servidor escucha en `127.0.0.1` con un puerto libre que
@@ -218,7 +218,7 @@ VACIO_POR_TIPO = {
 RELLENO_CODIGO = "____"
 
 #: Versión que se muestra en Configuración. Se sube a mano al empaquetar (§11).
-VERSION_APP = "2.0.0"
+VERSION_APP = "2.0.1"
 
 #: Máximo de resultados del Historial (§7-B). Buscar es para encontrar uno, no
 #: para leer la base entera: si no aparece, se afina la búsqueda o las fechas.

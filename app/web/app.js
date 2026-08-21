@@ -2477,9 +2477,11 @@ const PASOS_TUTORIAL = [
     destino: ["#hc-guia", "#hc-invitacion"],
     pestana: "panel-historia",
     titulo: "La medición de WhatsApp",
-    texto: "En una historia nueva la app te guía para descargar la imagen de la " +
-           "báscula y te la muestra acá abajo: la tocás y queda anexada. Si no la " +
-           "tenés, seguís sin ella."
+    texto: "Guardá los escaneos siempre en la carpeta «MEDICIONES — soltar aquí» " +
+           "de tu Escritorio: la app la creó para que no queden regados por la " +
+           "computadora. En una historia nueva te guía paso a paso, la imagen " +
+           "aparece acá abajo, la tocás y queda anexada. Si no la tenés, seguís " +
+           "sin ella."
   },
   {
     destino: ["#hc-nueva-consulta", "#hc-invitacion"],

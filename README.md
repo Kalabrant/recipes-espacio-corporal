@@ -29,6 +29,7 @@ Programa para emitir récipes médicos de Espacio Corporal. Funciona sin interne
 
 - **El programa abre en Historia clínica**, que es por donde empieza todo. Escribís el nombre o la cédula del paciente y lo elegís de la lista. ¿Viene por primera vez? Escribí su nombre y al pie de la lista aparece **"➕ Crear paciente nuevo"**: lo das de alta ahí mismo (lo único obligatorio es el nombre), se le asigna su código `EC-0001` y su carpeta, y su historia queda abierta.
 - Con la historia abierta, los botones **Nuevo récipe para este paciente** y **Nuevo informe** arrancan con esa persona ya puesta: no la escribís de nuevo. Arriba del récipe una banda te dice de quién es y te deja cambiarlo.
+- **Los escaneos que te llegan por WhatsApp** (el informe de la báscula, un laboratorio): guardalos siempre en la carpeta **«MEDICIONES — soltar aquí»** que el programa crea en tu Escritorio. Así quedan todos en un solo lugar y no regados por la computadora. Al abrir la historia del paciente, el programa te los muestra como fotitos: tocás la que corresponde y queda anexada (el archivo original no se toca). Si alguna se descargó sola en `Descargas`, también la va a encontrar.
 - Emitir un récipe es siempre lo mismo: el paciente, los medicamentos y **Guardar e imprimir**. Ese botón hace todo: le pone el código, lo guarda, genera el PDF, actualiza el registro y lo abre listo para imprimir. Si tenés apuro y no querés abrir ninguna historia, en **Nuevo récipe** podés escribir el nombre del paciente a mano, como siempre.
 
 ---
