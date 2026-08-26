@@ -78,7 +78,7 @@ Es un paso de una sola vez. No hace falta antes de cada release, y no es código
 py -3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-**511 tests, todos en verde.** No se publica nada con un test roto. Si agregaste código, agregá tests: `codigos.py` es la pieza que no puede fallar (reinicio de año, concurrencia, relleno de ceros, desborde a cinco dígitos, no reutilización tras anulación).
+**768 tests, todos en verde.** No se publica nada con un test roto. Si agregaste código, agregá tests: `codigos.py` es la pieza que no puede fallar (reinicio de año, concurrencia, relleno de ceros, desborde a cinco dígitos, no reutilización tras anulación).
 
 Un módulo suelto, mientras iterás:
 
@@ -93,10 +93,12 @@ py -3 -m unittest tests.test_codigos -v
 PyInstaller en modo `--onedir` (nunca `--onefile`: arranca más rápido y Windows Defender lo marca como falso positivo mucho menos seguido). Todo está fijado en el spec, así que se invoca sin flags sueltos:
 
 ```powershell
-py -3 -m PyInstaller --noconfirm --clean build/recipe.spec
+py -3 -m PyInstaller --noconfirm --clean build/recipe.spec --distpath build/dist --workpath build/tmp
 ```
 
-Queda una carpeta con el ejecutable y todo lo suyo al lado (`web/`, `recursos/`, las fuentes `.ttf`). La ruta exacta de salida la fija el `distpath` del spec.
+**Las dos banderas no son opcionales.** Sin ellas PyInstaller escribe en `dist\` y `build\` de la raíz, y el `.iss` busca en `build\dist\RecipesMedicos` (su `MiCarpetaDist` es relativo a la carpeta del propio `.iss`): la compilación del instalador falla, o peor, empaqueta una copia vieja que quedó ahí de antes.
+
+Queda una carpeta con el ejecutable y todo lo suyo al lado (`web/`, `recursos/`, las fuentes `.ttf`).
 
 Probá el resultado **antes** de empaquetarlo: abrí el `.exe` a mano, emití un récipe de prueba contra una `RECIPES_DIR` descartable y fijate que el PDF salga con el logo y las fuentes correctas. Un `--add-data` que falta no rompe el build: rompe el PDF del médico.
 
@@ -148,7 +150,7 @@ La carpeta y el nombre exactos de salida los fija el `.iss` en `OutputDir` / `Ou
 
 Las dos últimas son las que solo se pueden probar con el instalador en la mano, y son justo las que arruinan al médico si fallan. La de "instalar encima" se prueba así: instalá la versión vieja, emití dos récipes, instalá la nueva encima, abrí y verificá que los dos récipes sigan en el Historial y que el PDF se abra.
 
-Actualizá también `VERSION_APP` en `app/rutas.py` (hoy `2.0.0`) y que coincida con la versión del `.iss` y con el tag de la Release. El médico ve ese número al pie de Configuración: si dice una cosa y el instalador otra, no hay forma de saber qué tiene instalado.
+Actualizá también `VERSION_APP` en `app/rutas.py` (hoy `2.1.0`) y que coincida con la versión del `.iss` y con el tag de la Release. El médico ve ese número al pie de Configuración: si dice una cosa y el instalador otra, no hay forma de saber qué tiene instalado.
 
 ---
 
@@ -184,14 +186,33 @@ git commit -m "Version 2.0.0"
 git tag -a v2.0.0 -m "Version 2.0.0"
 git push origin main --follow-tags
 
-# 5. Release con el instalador adjunto
-gh release create v2.0.0 "build\salida\RecipesMedicos-Setup-2.0.0.exe" `
+# 5. El adjunto se sube SIN la versión en el nombre (ver el aviso de abajo)
+Copy-Item "build\salida\RecipesMedicos-Setup-2.0.0.exe" "build\salida\RecipesMedicos-Setup.exe"
+
+# 6. Release con el instalador adjunto
+gh release create v2.0.0 "build\salida\RecipesMedicos-Setup.exe" `
   --repo Kalabrant/recipes-espacio-corporal `
   --title "Récipes — Espacio Corporal 2.0.0" `
   --notes "Qué cambió en esta versión, en dos o tres renglones, en criollo."
 ```
 
-Ajustá la ruta del `.exe` a lo que haya producido ISCC (`OutputDir` del `.iss`).
+> ### ⚠ El adjunto se llama `RecipesMedicos-Setup.exe`, a secas
+>
+> ISCC produce `RecipesMedicos-Setup-2.1.0.exe`, con la versión adentro del nombre. **Ese no es el nombre con el que se sube.** El `README.md` le da al médico un enlace fijo que no cambia entre versiones:
+>
+> ```
+> https://github.com/Kalabrant/recipes-espacio-corporal/releases/latest/download/RecipesMedicos-Setup.exe
+> ```
+>
+> GitHub arma esa URL con **el nombre exacto del archivo adjunto**. Si subís el `.exe` con la versión en el nombre, ese enlace devuelve **404** y el médico se queda mirando una página de error, aunque la Release esté perfecta y el instalador ande. Por eso se copia con el nombre canónico antes de subirlo, como se hizo en la 2.0.0, la 2.0.1 y la 2.1.0.
+>
+> Comprobalo **después** de publicar, que es lo único que vale (dale unos segundos: el CDN de GitHub tarda un momento en servir un adjunto recién subido):
+>
+> ```powershell
+> curl.exe -sIL -o NUL -w "%{http_code}`n" "https://github.com/Kalabrant/recipes-espacio-corporal/releases/latest/download/RecipesMedicos-Setup.exe"
+> ```
+>
+> Tiene que decir `200`.
 
 Después de publicar:
 
