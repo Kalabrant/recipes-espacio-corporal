@@ -1,0 +1,807 @@
+/* ============================================================
+   Infiltraciones — mapa facial de la pestaña «Infiltraciones»
+   ------------------------------------------------------------
+   Portado del CSS de `App Botox/plantilla.html` (secciones 2 a 5), con los
+   tokens de ESTA app: acá no hay `--marca`, `--superficie` ni `--borde`, hay
+   `--teal`, `--papel`, `--linea`… Se borraron enteras la sección 6 del
+   original (`@media print`) y todos los tokens `--imp-*`: el PDF lo arma el
+   servidor con fpdf2, la pantalla no imprime nada.
+
+   Todo lo de acá empieza con `inf-`, para no pisar `estilos.css`.
+   Los únicos colores fuera de los tokens son los COLORES DE PRODUCTO, que son
+   datos (vienen del catálogo del servidor) y los escribe el JS en `style`.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   Contraste — WCAG 2.1 AA (4,5:1 texto normal · 3:1 texto grande y bordes de
+   control, SC 1.4.11). Medido sobre los tokens reales de `estilos.css`:
+
+   PAR (primer plano sobre fondo)                              RATIO   PIDE   OK
+   --texto #1F2937 · --papel #FFFFFF                          14,68:1  4,5:1  sí
+   --texto #1F2937 · --fondo #EEF0F2                          12,85:1  4,5:1  sí
+   --texto #1F2937 · --teal-claro #E6F2F0                     12,81:1  4,5:1  sí
+   --texto-suave #4B5563 · --papel                             7,56:1  4,5:1  sí
+   --texto-suave #4B5563 · --fondo                             6,62:1  4,5:1  sí
+   --texto-tenue #6B7280 · --papel                             4,83:1  4,5:1  sí
+   --texto-tenue #6B7280 · --fondo                             4,23:1  4,5:1  NO(*)
+   --texto-tenue #6B7280 · --teal-claro                        4,22:1  4,5:1  NO(*)
+   --teal #157F6F · --papel                                    4,89:1  4,5:1  sí
+   --teal #157F6F · --teal-claro                               4,26:1  4,5:1  NO(*)
+   --papel #FFFFFF · --teal #157F6F  (texto blanco sobre teal)  4,89:1  4,5:1  sí
+   --texto #1F2937 · --verde #9ABE0F (botón principal)          6,81:1  4,5:1  sí
+   --verde-oscuro #7E9D0B · --papel  (borde del botón)          3,13:1  3:1    sí
+   --rojo #B42318 · --papel                                     6,57:1  4,5:1  sí
+   --rojo #B42318 · --rojo-fondo #FDECEA                        5,75:1  4,5:1  sí
+   --ambar #92400E · --ambar-fondo #FEF3C7                      6,37:1  4,5:1  sí
+   --texto-suave #4B5563 · --teal-claro                         6,59:1  4,5:1  sí
+   --texto-suave #4B5563 · --ambar-fondo #FEF3C7                6,79:1  4,5:1  sí
+   --inf-borde-control #7F8890 · --papel                        3,60:1  3:1    sí
+   --inf-borde-control #7F8890 · --fondo                        3,15:1  3:1    sí
+   --inf-borde-control #7F8890 · --teal-claro                   3,14:1  3:1    sí
+   --texto #1F2937 · velo del hover de grupo (#CDE4E0)         11,02:1  4,5:1  sí
+   --papel #FFFFFF · --texto #1F2937  (el aviso emergente)     14,68:1  4,5:1  sí
+   --linea #D1D5DB · --papel                                    1,47:1  —      separador decorativo
+
+   (*) Los tres pares marcados NO llegan a 4,5:1, así que acá NO se usan para
+   texto normal: `--texto-tenue` sobre `--fondo` y sobre `--teal-claro` solo
+   aparecería en rótulos de 12 px en negrita… que tampoco es «texto grande»,
+   de modo que en esos fondos se usa `--texto-suave` (6,62:1 y 6,59:1) y el
+   teal sobre teal-claro se sustituye por `--texto` en las cabeceras de grupo
+   y en la banda de paciente.
+   Regla práctica de este archivo: sobre `--papel` vale `--texto-tenue`; sobre
+   `--fondo` y sobre `--teal-claro`, nunca más claro que `--texto-suave`.
+
+   Colores de producto con el NÚMERO BLANCO adentro del marcador (son datos,
+   vienen del catálogo; se listan para dejar la medición hecha):
+   #D92B2B 4,85:1 · #A85A0B 5,08:1 · #2456C4 6,56:1 · #7A3AB8 6,72:1 ·
+   #C42574 5,43:1 · #6E4B1F (producto nuevo) 7,81:1 · sin producto = --texto 14,68:1.
+   Y además cada marcador lleva su NÚMERO: se distinguen sin depender del color.
+   ------------------------------------------------------------ */
+
+#panel-infiltraciones {
+  /* Tokens propios de la pestaña. Ninguno es un color nuevo de marca: son
+     roles que `estilos.css` no tiene y que el mapa sí necesita. */
+  --inf-borde-control: #7F8890;   /* borde de TODO control (3:1 en los tres fondos) */
+  --inf-sin-producto:  var(--texto);        /* el producto del punto ya no existe */
+  --inf-referencia:    var(--texto-suave);  /* sesión anterior, siempre translúcida */
+  --inf-alto-control:  34px;                /* objetivo de clic mínimo de la barra */
+}
+
+/* ============================================================
+   1. Armazón de la pestaña
+   ============================================================ */
+
+.inf-envoltorio {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Cerrojo de seguridad: la lámina se dimensiona midiendo su contenedor, así
+     que si algún día un hijo creciera de más entraríamos en una realimentación
+     (contenedor más alto -> lámina más alta -> contenedor más alto). Acá se
+     corta: la pestaña nunca es más alta que el hueco que le toca. */
+  overflow: hidden;
+}
+
+/* El alto es el recurso escaso: el objetivo es que a 1280×720 —el portátil
+   más chico que se contempla— la lámina y la tabla se lleven la mayor parte
+   de la pantalla y las dos barras de herramientas no pasen de dos renglones. */
+.inf-mesa {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 8px;
+}
+.inf-mesa[hidden] { display: none; }
+
+/* `minmax(0, …)` en las filas y en la primera columna, no `1fr` a secas: sin el
+   0 la pista crece hasta el contenido y la lámina, que se mide contra su
+   contenedor, la empuja sin techo. */
+.inf-trabajo {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 62fr) minmax(360px, 38fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.inf-separador { flex: 1 1 auto; }
+.inf-punto-separador { color: var(--texto-tenue); }
+.inf-oculto { display: none !important; }
+.inf-oculto-visual {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ------------------------------------------------------------
+   Carteles a pantalla completa: sin paciente, catálogo cargando o caído.
+   ------------------------------------------------------------ */
+.inf-cartel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 28px;
+  text-align: center;
+}
+.inf-cartel[hidden] { display: none; }
+
+.inf-cartel-titulo {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.inf-cartel-texto {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 17px;
+  color: var(--texto-suave);
+}
+
+/* ============================================================
+   2. Controles (todos con borde --inf-borde-control: 3:1)
+   ============================================================ */
+
+.inf-control {
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--texto);
+  background: var(--papel);
+  border: 1px solid var(--inf-borde-control);
+  border-radius: var(--radio);
+  min-height: var(--inf-alto-control);
+  padding: 4px 8px;
+  max-width: 100%;
+}
+.inf-control-ancho { width: 100%; min-width: 260px; }
+.inf-control:hover { border-color: var(--texto-suave); }
+
+.inf-boton {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto);
+  background: var(--papel);
+  border: 1px solid var(--inf-borde-control);
+  border-radius: var(--radio);
+  min-height: var(--inf-alto-control);
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.inf-boton:hover { background: var(--teal-claro); border-color: var(--teal); }
+.inf-boton:disabled { opacity: .5; cursor: default; background: var(--papel); border-color: var(--inf-borde-control); }
+
+.inf-boton-chico { font-size: 14px; padding: 4px 9px; }
+
+/* Botón principal: los mismos colores que `.boton-principal` de estilos.css
+   (texto sobre verde, 6,81:1), en tamaño de barra de herramientas. */
+.inf-boton-principal {
+  color: var(--texto);
+  background: var(--verde);
+  border-color: var(--verde-oscuro);
+  min-height: 44px;
+  padding: 6px 20px;
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow: 0 2px 0 var(--verde-oscuro);
+}
+/* El mismo hover que `.boton-principal` de estilos.css, para que los dos
+   botones verdes de la app se comporten igual. */
+.inf-boton-principal:hover { background: #A8CE12; border-color: var(--verde-oscuro); }
+.inf-boton-principal:active { transform: translateY(1px); box-shadow: none; }
+.inf-boton-principal:disabled { box-shadow: none; background: var(--verde); border-color: var(--verde-oscuro); }
+
+.inf-boton-icono {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radio);
+  color: var(--texto-suave);
+  cursor: pointer;
+  font-size: 15px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px;
+}
+.inf-boton-icono:hover { background: var(--teal-claro); color: var(--texto); border-color: var(--teal); }
+
+.inf-campo { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.inf-campo > label { font-size: 13px; font-weight: 600; color: var(--texto-suave); }
+.inf-campo-fila { flex-direction: row; align-items: center; gap: 6px; }
+.inf-campo-fila > label { white-space: nowrap; }
+
+/* Las casillas se usan sin parar y con guantes: 20 px de casilla y una
+   etiqueta de 30 px de alto que también conmuta. */
+.inf-casilla input[type="checkbox"] {
+  width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: var(--teal);
+}
+.inf-casilla > label {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 0 4px; cursor: pointer;
+  color: var(--texto);
+}
+
+#inf-rng-tam { width: 92px; min-height: 30px; accent-color: var(--teal); cursor: pointer; }
+
+.inf-nota { color: var(--texto-suave); font-size: 13px; margin: 0; }
+
+/* ============================================================
+   3. Banda de paciente y avisos
+   ============================================================ */
+
+.inf-banda {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 7px 14px;
+  background: var(--teal-claro);
+  border: 1px solid var(--teal);
+  border-left: 6px solid var(--teal);
+  border-radius: var(--radio);
+}
+
+.inf-banda-texto {
+  flex: 1 1 240px;
+  margin: 0;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--texto);            /* --teal sobre --teal-claro da 4,26:1: no llega */
+}
+
+.inf-banda-sesion { margin: 0; font-size: 14px; font-weight: 600; color: var(--texto-suave); }
+
+.inf-aviso-paciente {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--ambar-fondo);
+  border: 1px solid var(--ambar);
+  border-radius: var(--radio);
+}
+.inf-aviso-paciente[hidden] { display: none; }
+.inf-aviso-paciente-texto { flex: 1 1 260px; margin: 0; font-size: 15px; font-weight: 600; color: var(--ambar); }
+
+.inf-error {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--rojo);
+  background: var(--rojo-fondo);
+  border: 1px solid var(--rojo);
+  border-radius: var(--radio);
+}
+.inf-error[hidden] { display: none; }
+
+.inf-exito {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto);
+  background: var(--teal-claro);
+  border: 1px solid var(--teal);
+  border-radius: var(--radio);
+}
+.inf-exito[hidden] { display: none; }
+
+/* Aviso breve y no bloqueante, abajo del todo. */
+.inf-aviso {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: 70vw;
+  padding: 10px 16px;
+  font-size: 15px;
+  color: var(--papel);
+  background: var(--texto);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+.inf-aviso[hidden] { display: none; }
+
+/* ============================================================
+   4. Barras de herramientas
+   ============================================================ */
+
+.inf-barra-sesion {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+.inf-barra-sesion .inf-campo { flex: 0 0 auto; }
+/* Los desplegables llevan tope de ancho: sin él, «Clásico 3 áreas (frente +
+   glabela + patas de gallo)» estira el control a 366 px y parte la barra en
+   dos renglones. El texto completo se lee al desplegarlo. */
+#inf-vista { min-width: 140px; max-width: 170px; }
+#inf-plantilla { min-width: 190px; max-width: 220px; }
+#inf-sel-producto { min-width: 120px; max-width: 150px; }
+
+/* ============================================================
+   5. Lienzo y marcadores  (portado de la sección 3 del original)
+   ============================================================ */
+
+.inf-lienzo {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  overflow: hidden;
+}
+
+.inf-barra-lienzo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 5px 9px;
+  background: var(--teal-claro);
+  border-bottom: 1px solid var(--linea);
+}
+.inf-barra-lienzo .inf-campo > label { color: var(--texto-suave); }
+/* Barra angosta (62 % de 1280 px): botones más apretados, pero nunca por
+   debajo de 32 px de alto ni de 14 px de letra. */
+.inf-barra-lienzo .inf-boton { font-size: 14px; padding: 4px 9px; min-height: 32px; }
+.inf-barra-lienzo .inf-control { font-size: 14px; min-height: 32px; }
+
+.inf-barra-calibracion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--teal);
+  color: var(--papel);            /* blanco sobre teal: 4,89:1 */
+  border-bottom: 1px solid var(--linea);
+  font-size: 15px;
+}
+.inf-barra-calibracion[hidden] { display: none; }
+.inf-barra-calibracion strong { font-weight: 700; }
+
+.inf-area-lienzo {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--fondo);
+  padding: 8px;
+}
+
+.inf-marco { position: relative; line-height: 0; touch-action: none; overflow: hidden; }
+
+#inf-lamina {
+  width: 100%; height: 100%;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  border-radius: 3px;
+  transform-origin: 0 0;          /* la imagen y la capa SVG comparten transformación */
+}
+
+#inf-overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#inf-overlay text { user-select: none; pointer-events: none; }
+
+.inf-marco.inf-desplazable #inf-overlay { cursor: grab; }
+.inf-marco.inf-desplazando #inf-overlay { cursor: grabbing; }
+.inf-marco.inf-calibrando #inf-overlay { cursor: crosshair; }
+
+/* --- Marcadores --- */
+.inf-marcador { cursor: grab; }
+.inf-marcador.inf-arrastrando { cursor: grabbing; }
+.inf-marcador .inf-toque { fill: transparent; stroke: none; }   /* objetivo de clic generoso */
+.inf-marcador .inf-disco { stroke: var(--papel); stroke-width: 1.5; }
+.inf-marcador .inf-numero {
+  fill: var(--papel); font-weight: 700; text-anchor: middle; dominant-baseline: central;
+}
+/* Producto de color claro: con el número blanco no se llegaría a 4,5:1, así que
+   se pinta oscuro. Lo decide `numeroOscuro()` midiendo el color, igual que hace
+   el PDF del servidor; acá solo vive el color. */
+.inf-marcador .inf-numero.inf-numero-oscuro { fill: var(--texto); }
+/* Disco chico (radio < 7): el número no entra adentro y sale afuera, oscuro con halo blanco. */
+.inf-marcador .inf-numero.inf-fuera {
+  fill: var(--texto); text-anchor: start; dominant-baseline: auto;
+  stroke: var(--papel); stroke-width: 2.5px; paint-order: stroke;
+}
+.inf-marcador .inf-etiqueta-dosis {
+  fill: var(--texto); font-weight: 700; text-anchor: middle;
+  stroke: var(--papel); stroke-width: 3px; paint-order: stroke;
+}
+.inf-marcador .inf-anillo { fill: none; stroke: var(--teal); stroke-width: 3; }
+/* Todavía sin dosis: se distingue por el trazo discontinuo. El disco va opaco a
+   propósito: bajarle la opacidad rebajaba el contraste del número blanco. */
+.inf-marcador.inf-sin-dosis .inf-disco { stroke-dasharray: 3 2; }
+
+/* Desapilado: cuando un racimo de puntos se taparía, el disco se aparta y una
+   línea fina lo une con su posición anatómica exacta, que no se mueve. */
+.inf-guia-marcador { stroke: var(--texto); stroke-width: 1; opacity: .55; }
+.inf-ancla-marcador { stroke: var(--papel); stroke-width: 1; }
+
+#inf-capa-referencia { opacity: .45; }
+#inf-capa-referencia .inf-disco { fill: var(--inf-referencia); stroke: var(--papel); stroke-width: 1; }
+#inf-capa-referencia .inf-numero { fill: var(--papel); font-weight: 600; }
+
+/* --- Calibración: referencias arrastrables --- */
+.inf-ref-calib { cursor: grab; }
+.inf-ref-calib .inf-cruz { stroke: var(--teal); stroke-width: 3; }
+.inf-ref-calib .inf-aro { fill: none; stroke: var(--teal); stroke-width: 3; }
+.inf-ref-calib .inf-toque { fill: transparent; }
+/* El rótulo va en --texto (14,68:1 sobre el halo blanco); el teal se queda para
+   la cruz y el aro, que son grafismos (3:1). */
+.inf-ref-calib .inf-rotulo {
+  fill: var(--texto); font-weight: 700;
+  stroke: var(--papel); stroke-width: 3px; paint-order: stroke;
+}
+.inf-punto-previo { fill: none; stroke: var(--teal); stroke-width: 1.8; opacity: .9; }
+
+/* --- Leyenda --- */
+.inf-leyenda {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-top: 1px solid var(--linea);
+  color: var(--texto-tenue);      /* sobre --papel: 4,83:1 */
+  font-size: 14px;
+  min-height: 32px;
+}
+.inf-chip-leyenda { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.inf-chip-color {
+  display: inline-block;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--inf-borde-control);
+}
+
+/* ============================================================
+   6. Panel derecho: tabla viva, totales, observaciones, sesiones
+   ============================================================ */
+
+.inf-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  overflow: hidden;
+}
+
+.inf-cabecera-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--teal-claro);
+  border-bottom: 1px solid var(--linea);
+}
+.inf-titulo-panel {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--texto);            /* --teal sobre --teal-claro no llega a 4,5:1 */
+}
+
+.inf-contenedor-tabla { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+
+/* El panel es angosto: anchos fijos salvo la Zona, que se queda con el resto.
+   Los valores largos se leen completos en el título emergente de cada control. */
+.inf-tabla { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.inf-tabla th, .inf-tabla td {
+  border-bottom: 1px solid var(--linea);
+  padding: 3px 4px;
+  text-align: left;
+  vertical-align: middle;
+}
+.inf-tabla thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--papel);
+  border-bottom: 2px solid var(--inf-borde-control);
+  color: var(--texto-tenue);      /* sobre --papel: 4,83:1 */
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.inf-tabla tbody tr.inf-seleccionada { background: var(--teal-claro); }
+.inf-tabla td .inf-control { width: 100%; min-width: 0; font-size: 14px; min-height: 30px; padding: 3px 5px; }
+
+.inf-col-num { width: 40px; text-align: center; white-space: nowrap; }
+.inf-col-lado { width: 46px; }
+.inf-col-producto { width: 80px; }
+.inf-col-dosis { width: 76px; }
+.inf-col-notas { width: 58px; }
+.inf-col-borrar { width: 32px; }
+
+.inf-celda-num { font-weight: 700; text-align: center; }
+.inf-punto-color {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: baseline;
+}
+.inf-caja-dosis { display: flex; align-items: center; gap: 4px; }
+.inf-caja-dosis .inf-unidad { color: var(--texto-tenue); font-size: 12px; }
+
+.inf-sin-puntos { padding: 16px 12px; margin: 0; color: var(--texto-suave); font-size: 15px; }
+.inf-sin-puntos[hidden] { display: none; }
+
+/* Agrupación plegable por región, con subtotal en la cabecera. */
+.inf-fila-grupo td {
+  background: var(--teal-claro);
+  padding: 0;
+  border-bottom: 1px solid var(--inf-borde-control);
+}
+.inf-cabecera-grupo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 30px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--texto);
+  padding: 5px 7px;
+}
+/* El velo del hover se calcula sobre --teal: si algún día cambia el token,
+   el hover cambia con él. La primera línea es el respaldo para motores sin
+   `color-mix` (--teal-claro sin velo: el hover se nota por el cursor). */
+.inf-cabecera-grupo:hover { background: var(--teal-claro); }
+.inf-cabecera-grupo:hover { background: color-mix(in srgb, var(--teal) 12%, var(--teal-claro)); }
+.inf-cabecera-grupo .inf-flecha { display: inline-block; width: 10px; color: var(--texto-suave); }
+/* El nombre de la región cede antes que el subtotal: la cifra de dosis no se
+   puede quedar sin lugar y salir del renglón. */
+.inf-cabecera-grupo .inf-nombre-grupo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inf-cabecera-grupo .inf-subtotal {
+  margin-left: auto; font-weight: 600; color: var(--texto-suave); white-space: nowrap;
+}
+.inf-cabecera-grupo .inf-cuantos { font-weight: 400; color: var(--texto-suave); }
+
+.inf-totales {
+  border-top: 2px solid var(--inf-borde-control);
+  padding: 8px 10px;
+  background: var(--fondo);
+}
+.inf-titulo-totales {
+  margin: 0 0 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--texto-suave);      /* sobre --fondo: 6,62:1 */
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.inf-fila-total { display: flex; align-items: center; gap: 7px; padding: 2px 0; font-size: 14px; }
+.inf-fila-total .inf-nombre { flex: 1 1 auto; min-width: 0; }
+.inf-fila-total .inf-valor { font-weight: 700; white-space: nowrap; }
+.inf-total-puntos {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--linea);
+  font-size: 13px;
+  color: var(--texto-suave);
+}
+
+.inf-bloque-observaciones {
+  border-top: 1px solid var(--linea);
+  padding: 8px 10px;
+  background: var(--fondo);
+}
+.inf-bloque-observaciones label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  margin-bottom: 3px;
+}
+#inf-observaciones { width: 100%; resize: vertical; min-height: 40px; }
+
+/* --- Sesiones anteriores del paciente --- */
+.inf-sesiones { border-top: 1px solid var(--linea); background: var(--fondo); }
+
+.inf-cabecera-sesiones {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--texto);
+  padding: 6px 10px;
+}
+.inf-cabecera-sesiones:hover { background: var(--teal-claro); }
+.inf-cabecera-sesiones .inf-flecha { display: inline-block; width: 10px; color: var(--texto-suave); }
+.inf-cabecera-sesiones .inf-cuantos { color: var(--texto-suave); font-weight: 600; }
+
+.inf-sesiones-cuerpo { max-height: 190px; overflow-y: auto; padding: 0 10px 10px; }
+.inf-sesiones-cuerpo[hidden] { display: none; }
+
+.inf-lista-sesiones { list-style: none; margin: 0; padding: 0; }
+.inf-lista-sesiones li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--linea);
+  font-size: 14px;
+}
+.inf-lista-sesiones .inf-sesion-texto { flex: 1 1 150px; min-width: 0; }
+.inf-lista-sesiones .inf-sesion-fecha { font-weight: 700; }
+.inf-lista-sesiones .inf-sesion-detalle { color: var(--texto-suave); }
+.inf-lista-sesiones li.inf-sesion-abierta { background: var(--teal-claro); }
+.inf-sesion-anulada { color: var(--rojo); font-weight: 700; }
+
+/* ============================================================
+   7. Diálogos (portado de la sección 5 del original)
+   ============================================================ */
+
+.inf-dialogo {
+  border: 1px solid var(--inf-borde-control);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--texto);
+  background: var(--papel);
+  max-width: min(680px, 92vw);
+  /* rgba(31, 41, 55, …) es --texto con transparencia: el mismo tinte que usa
+     `--sombra` en estilos.css. No es un color nuevo, es el token diluido. */
+  box-shadow: 0 10px 30px rgba(31, 41, 55, .28);
+}
+.inf-dialogo::backdrop { background: rgba(31, 41, 55, .38); }
+.inf-dialogo-ancho { max-width: min(940px, 96vw); }
+
+.inf-dlg-cabecera {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--linea);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--teal);             /* sobre --papel: 4,89:1 */
+}
+.inf-dlg-cuerpo { padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; }
+.inf-dlg-cuerpo-alto { max-height: 70vh; overflow-y: auto; gap: 18px; }
+.inf-dlg-pie {
+  padding: 12px 16px;
+  border-top: 1px solid var(--linea);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.inf-dlg-cuerpo p { margin: 0; }
+.inf-lista-pasos { margin: 0; padding-left: 22px; }
+.inf-lista-pasos li { margin-bottom: 4px; }
+
+/* --- Ajustes --- */
+.inf-seccion-ajustes {
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 12px 14px;
+}
+.inf-seccion-ajustes > h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--teal);
+}
+.inf-tabla-envoltorio { overflow-x: auto; }
+.inf-tabla-ajustes { width: 100%; border-collapse: collapse; font-size: 14px; }
+.inf-tabla-ajustes th, .inf-tabla-ajustes td {
+  border-bottom: 1px solid var(--linea);
+  padding: 4px 5px;
+  text-align: left;
+}
+.inf-tabla-ajustes th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--texto-tenue);      /* sobre --papel: 4,83:1 */
+}
+.inf-tabla-ajustes .inf-control { width: 100%; }
+.inf-tabla-ajustes input[type="color"] {
+  width: 40px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--inf-borde-control);
+  border-radius: var(--radio);
+  background: none;
+  cursor: pointer;
+}
+.inf-aj-col-tipo { width: 120px; }
+.inf-aj-col-unidad { width: 74px; }
+.inf-aj-col-color { width: 52px; }
+.inf-aj-col-lote { width: 118px; }
+.inf-aj-col-caducidad { width: 140px; }
+.inf-aj-col-acciones { width: 34px; }
+
+.inf-fila-botones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+#inf-aj-zonas { width: 100%; min-height: 84px; resize: vertical; }
+
+.inf-lista-plantillas { list-style: none; margin: 0; padding: 0; }
+.inf-lista-plantillas li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--linea);
+}
+.inf-lista-plantillas li .inf-nombre { flex: 1 1 auto; min-width: 0; }
+
+/* ============================================================
+   8. Pantallas chicas: el mapa arriba y la tabla abajo
+   ============================================================ */
+@media (max-width: 1180px) {
+  .inf-trabajo {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+}
+
+/* Por debajo de 1100 px `estilos.css` convierte la app entera en un documento
+   que se desplaza: `body { overflow: auto }`, `main` y `.panel` pasan a
+   `display: block`. Ahí la pestaña deja de tener un alto definido, y como la
+   lámina se mide contra su contenedor eso sería una realimentación sin fin
+   (contenedor sin techo -> lámina enorme -> contenedor más alto). Así que en
+   esa franja el mapa y la tabla toman un alto fijo y la página se desplaza,
+   igual que hacen «Nuevo récipe» y el Historial. */
+@media (max-width: 1100px) {
+  .inf-envoltorio { display: block; overflow: visible; }
+  .inf-mesa { display: block; }
+  .inf-mesa > * + * { margin-top: 8px; }
+  .inf-trabajo { display: block; }
+  .inf-lienzo { height: 460px; margin-bottom: 12px; }
+  .inf-panel { height: 540px; }
+  .inf-cartel { display: block; padding: 40px 20px; }
+  .inf-cartel > * { margin-left: auto; margin-right: auto; }
+  .inf-cartel-titulo, .inf-cartel-texto { margin-bottom: 14px; }
+}

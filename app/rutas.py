@@ -55,6 +55,33 @@ Contrato de la API (JSON UTF-8; los errores son
     GET  /api/pacientes/<id>/frase-inicial?motivo= -> {"frase"} editable
     GET  /api/pacientes/<id>/historia/pdf -> la historia imprimible, al vuelo
 
+    Órdenes de exámenes (2.1, contrato §5)
+    GET  /api/sugerencias/analisis?q=     -> con `q`, las sugerencias de
+                                          siempre; **sin `q`, el catálogo
+                                          entero agrupado**, que es con lo que
+                                          la pantalla pinta el panel de
+                                          análisis frecuentes
+    POST /api/examenes/medir              igual que /api/medir
+    POST /api/examenes/vista-previa       PDF inline, sin escribir nada
+    POST /api/examenes                    -> {"codigo", "ruta_pdf"}
+    GET  /api/examenes?q=&desde=&hasta=   historial, tope 200
+    GET  /api/pacientes/<id>/examenes     -> {"examenes": [...]} del paciente
+    GET  /api/examenes/<id>/pdf           el MISMO archivo guardado
+    POST /api/examenes/<id>/abrir         lo abre para reimprimir
+    POST /api/examenes/<id>/anular        {motivo} -> la orden actualizada
+
+    Mapa de infiltraciones (2.1, contrato §5)
+    GET  /api/infiltraciones/catalogo     -> {vistas, puntos, plantillas,
+                                          zonas, productos}
+    GET  /recursos/infiltraciones/<archivo>  las dos láminas, lista blanca
+    POST /api/pacientes/<id>/infiltraciones  crea la sesión, genera el PDF
+    GET  /api/pacientes/<id>/infiltraciones  las del paciente
+    GET  /api/infiltraciones/<id>         la sesión entera, para reabrirla
+    PUT  /api/infiltraciones/<id>         la corrige y REGENERA el PDF
+    GET  /api/infiltraciones/<id>/pdf     el MISMO archivo guardado
+    POST /api/infiltraciones/<id>/abrir   lo abre para reimprimir
+    POST /api/infiltraciones/<id>/anular  {motivo} -> el registro actualizado
+
     Configuración (§7-C, §10)
     GET  /api/config          -> datos del médico, prefijo, PIN, tutorial, versión
     POST /api/config          -> los guarda (incluido {tutorial_visto})
@@ -127,14 +154,17 @@ from flask import Flask, g, jsonify, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 try:  # como paquete (``from app import rutas``)
-    from . import (basedatos, codigos, excel, pdf_comun, pdf_historia,
-                   pdf_informe, pdf_recipe, respaldo)
+    from . import (basedatos, codigos, excel, pdf_comun, pdf_examenes,
+                   pdf_historia, pdf_infiltraciones, pdf_informe, pdf_recipe,
+                   respaldo)
 except ImportError:  # ejecutado con ``app/`` en el sys.path (tests, scripts)
     import basedatos  # type: ignore[no-redef]
     import codigos  # type: ignore[no-redef]
     import excel  # type: ignore[no-redef]
     import pdf_comun  # type: ignore[no-redef]
+    import pdf_examenes  # type: ignore[no-redef]
     import pdf_historia  # type: ignore[no-redef]
+    import pdf_infiltraciones  # type: ignore[no-redef]
     import pdf_informe  # type: ignore[no-redef]
     import pdf_recipe  # type: ignore[no-redef]
     import respaldo  # type: ignore[no-redef]
@@ -218,13 +248,123 @@ VACIO_POR_TIPO = {
 RELLENO_CODIGO = "____"
 
 #: Versión que se muestra en Configuración. Se sube a mano al empaquetar (§11).
-VERSION_APP = "2.0.1"
+VERSION_APP = "2.1.0"
 
 #: Máximo de resultados del Historial (§7-B). Buscar es para encontrar uno, no
 #: para leer la base entera: si no aparece, se afina la búsqueda o las fechas.
 LIMITE_HISTORIAL = 200
 
 _RE_FECHA_SIMPLE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+# --------------------------------------------------------------------------
+# Mapa de infiltraciones (2.1, contrato §5)
+# --------------------------------------------------------------------------
+
+#: Válvulas de seguridad de una sesión de mapeo (contrato §5). Como el
+#: `MAX_ITEMS` del récipe, no son topes de producto: 200 puntos son más del
+#: quíntuple de una sesión de cara completa (35 de fábrica) y 20 productos,
+#: cuatro veces el catálogo precargado. Están para que un cuerpo absurdo no
+#: llegue a la base ni al dibujo, no para discutirle nada al médico.
+MAX_PUNTOS_INFILTRACION = 200
+MAX_PRODUCTOS_INFILTRACION = 20
+
+#: Tope de la dosis de un punto. La unidad la fija el producto (U, ml, mg), así
+#: que el número solo se acota por cordura: 999 está muy por encima de cualquier
+#: dosis real en un solo punto y ataja el dedo pesado.
+MAX_DOSIS_PUNTO = 999.0
+
+#: El color del marcador viaja como dato, no como token de la interfaz (§6 del
+#: contrato), y entra al PDF: se exige `#RRGGBB` para que `color_desde_hex` no
+#: tenga que adivinar y para que lo que se ve en pantalla sea lo que se imprime.
+_RE_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+#: Las dos láminas de fábrica, con su calibración medida sobre cada imagen.
+#:
+#: **Estos números no se recalculan ni se estiman**: son los tres puntos de
+#: referencia (las dos pupilas y la punta del mentón, en coordenadas
+#: normalizadas 0-1 sobre la imagen) con los que se afinaron los 35 puntos de
+#: `plantillas.json`. Cambiar un decimal acá mueve todos los puntos de fábrica
+#: sobre la cara. La calibración de tres clics de la pantalla parte de esta y
+#: la puede ajustar por paciente; lo que se guarda con la sesión es la que se
+#: usó ese día (columna `calibracion` de `infiltraciones`).
+#:
+#: `url` es relativa a propósito: la sirve `/recursos/infiltraciones/<archivo>`,
+#: que tiene su propia lista blanca (nunca se arma una ruta con lo que llega
+#: del cliente).
+VISTAS_INFILTRACION: tuple[dict[str, Any], ...] = (
+    {
+        "id": "hombre-frontal",
+        "etiqueta": "Hombre — vista frontal",
+        "archivo": "base-hombre.jpg",
+        "url": "recursos/infiltraciones/base-hombre.jpg",
+        "ancho": 896,
+        "alto": 1200,
+        "calibracion": {
+            "pupilaIzq": [0.330, 0.4118],
+            "pupilaDer": [0.656, 0.4115],
+            "menton": [0.493, 0.820],
+        },
+    },
+    {
+        "id": "mujer-frontal",
+        "etiqueta": "Mujer — vista frontal",
+        "archivo": "base-mujer.jpg",
+        "url": "recursos/infiltraciones/base-mujer.jpg",
+        "ancho": 896,
+        "alto": 1200,
+        "calibracion": {
+            "pupilaIzq": [0.3313, 0.4133],
+            "pupilaDer": [0.664, 0.4172],
+            "menton": [0.500, 0.829],
+        },
+    },
+)
+
+#: ``nombre de archivo -> tipo MIME``. Es **la** lista blanca de las láminas:
+#: el endpoint no arma la ruta con el texto que llegó, sino con la clave que
+#: encontró acá, así que un `..\\..\\algo` no tiene por dónde entrar.
+LAMINAS_SERVIBLES: dict[str, str] = {
+    vista["archivo"]: "image/jpeg" for vista in VISTAS_INFILTRACION
+}
+
+#: Las tres claves de la calibración de tres clics, en el orden en que se piden.
+CLAVES_CALIBRACION = ("pupilaIzq", "pupilaDer", "menton")
+
+#: El grupo «Otras» del catálogo de zonas del encargo original. Los otros nueve
+#: grupos ya viven en `pdf_infiltraciones.ZONAS_CATALOGO` —la tabla del PDF
+#: agrupa por ahí— y se leen de allá para que la pantalla y el papel no puedan
+#: separarse; este es el único que falta, porque no clasifica ningún punto de
+#: fábrica y al PDF no le hacía falta.
+ZONAS_OTRAS = ("Hiperhidrosis frontal", "Bruxismo", "Temporal",
+               "Otra (texto libre)")
+
+#: Productos precargados (encargo original, «Productos»). Son **genéricos a
+#: propósito**: ni nombres comerciales reales ni inventados. El médico los edita
+#: y agrega los suyos desde la pantalla; lo que se guarda con cada sesión es la
+#: lista que él usó ese día, con su lote y su caducidad, no esta.
+#:
+#: La unidad la fija el producto y no la dosis, y los colores están elegidos
+#: lejos del verde y del teal de la marca para que ningún marcador se confunda
+#: con el membrete impreso.
+PRODUCTOS_INFILTRACION: tuple[dict[str, Any], ...] = (
+    {"id": "p1", "nombre": "Toxina A — marca 1", "tipo": "toxina",
+     "unidad": "U", "color": "#D92B2B", "lote": "", "caducidad": ""},
+    # El naranja va oscuro a propósito. `#E07B18` deja el número blanco del
+    # marcador en 2,99:1, muy por debajo del 4,5:1 que pide un texto chico, y
+    # es el mismo tono que el proyecto del que salió este mapa ya había
+    # descartado dos veces (ver `docs/DECISIONES.md` de «App Botox»): primero
+    # `#E07C12` a 2,97:1 y después `#C86C0D` a 3,75:1. `#A85A0B` da 5,08:1
+    # contra blanco y sigue lejos del teal de la marca.
+    {"id": "p2", "nombre": "Toxina A — marca 2", "tipo": "toxina",
+     "unidad": "U", "color": "#A85A0B", "lote": "", "caducidad": ""},
+    {"id": "p3", "nombre": "AH baja densidad", "tipo": "relleno",
+     "unidad": "ml", "color": "#2456C4", "lote": "", "caducidad": ""},
+    {"id": "p4", "nombre": "AH alta densidad", "tipo": "relleno",
+     "unidad": "ml", "color": "#6B3FA0", "lote": "", "caducidad": ""},
+    {"id": "p5", "nombre": "Bioestimulador", "tipo": "bioestimulador",
+     "unidad": "ml", "color": "#8A6D1F", "lote": "", "caducidad": ""},
+)
 
 
 # --------------------------------------------------------------------------
@@ -452,10 +592,13 @@ def sanitizar_nombre_archivo(nombre: str | None, maximo: int = MAX_NOMBRE_ARCHIV
 DIR_PACIENTES = "pacientes"
 
 #: Qué hay adentro de la carpeta de un paciente (dec. 17). `recipes\\` la usa
-#: `ruta_pdf_nueva`; `informes\\` y `anexos\\` las van a usar la historia
-#: clínica y la bandeja de WhatsApp (dec. 10 y 11). Se crean las tres juntas
-#: para que el médico vea siempre la misma estructura al abrir la carpeta.
-SUBCARPETAS_PACIENTE = ("recipes", "informes", "anexos")
+#: `ruta_pdf_nueva`; `informes\\` y `anexos\\` las usan la historia clínica y la
+#: bandeja de WhatsApp (dec. 10 y 11), y desde la 2.1 se suman `examenes\\` e
+#: `infiltraciones\\` (contrato §5). Se crean todas juntas para que el médico
+#: vea siempre la misma estructura al abrir la carpeta, aunque a ese paciente
+#: todavía no le haya pedido un laboratorio ni le haya mapeado una infiltración.
+SUBCARPETAS_PACIENTE = ("recipes", "informes", "anexos", "examenes",
+                        "infiltraciones")
 
 
 def _carpeta_congelada(raiz: Path, prefijo: str) -> Path | None:
@@ -570,6 +713,67 @@ def ruta_informe_nueva(dir_datos: Path, codigo: str, paciente_nombre: str,
             )
         candidata = carpeta / f"{base}_v{version}.pdf"
     return candidata
+
+
+def _ruta_documento_nueva(dir_datos: Path, codigo: str, paciente_nombre: str,
+                          fecha_iso: str, subcarpeta: str, prefijo: str,
+                          que_es: str) -> Path:
+    """El molde de `ruta_informe_nueva`, con la subcarpeta y el prefijo aparte.
+
+    Los tres documentos que la 2.1 guarda en la carpeta del paciente —informe,
+    orden de exámenes y registro de infiltraciones— se nombran exactamente
+    igual: ``PREFIJO_EC-NNNN_AAAA-MM-DD.pdf``, con ``_v2``, ``_v3``… si se
+    repiten el mismo día y **sin pisar jamás** uno ya emitido (§0.5 del
+    contrato). Escribir tres veces el mismo bucle era pedir que alguna de las
+    tres se olvidara del versionado, que es justo la línea que no se puede
+    perder: un PDF emitido está impreso y en manos del paciente.
+    """
+    carpeta = carpeta_paciente(dir_datos, codigo, paciente_nombre) / subcarpeta
+    base = f"{prefijo}_{codigo}_{fecha_iso[:10]}"
+    candidata = carpeta / f"{base}.pdf"
+    version = 1
+    while candidata.exists():
+        version += 1
+        if version > 999:  # no debería pasar nunca; mejor eso que un bucle infinito
+            raise RuntimeError(
+                f"Ya hay demasiadas versiones de {que_es} en la carpeta. "
+                "Movelas a otro lado y volvé a intentar."
+            )
+        candidata = carpeta / f"{base}_v{version}.pdf"
+    return candidata
+
+
+def ruta_examenes_nueva(dir_datos: Path, codigo: str, paciente_nombre: str,
+                        fecha_iso: str) -> Path:
+    """Ruta libre para el PDF de una orden de exámenes (contrato §5)::
+
+        pacientes\\EC-NNNN_APELLIDO-Nombre\\examenes\\EXAMENES_EC-NNNN_AAAA-MM-DD.pdf
+
+    Calcada de `ruta_informe_nueva`: la segunda orden del mismo día sale
+    ``…_v2`` y una emitida no se sobrescribe nunca. El nombre no lleva el del
+    paciente —ya está el de la carpeta— para que el prefijo ``EXAMENES_``
+    quede a la vista y la orden se distinga de un récipe de un solo vistazo.
+    """
+    return _ruta_documento_nueva(dir_datos, codigo, paciente_nombre, fecha_iso,
+                                 "examenes", "EXAMENES",
+                                 "esta orden de exámenes")
+
+
+def ruta_infiltraciones_nueva(dir_datos: Path, codigo: str,
+                              paciente_nombre: str, fecha_iso: str) -> Path:
+    """Ruta libre para el PDF de un mapa de infiltraciones (contrato §5)::
+
+        pacientes\\EC-NNNN_APELLIDO-Nombre\\infiltraciones\\INFILTRACIONES_EC-NNNN_AAAA-MM-DD.pdf
+
+    Acá el versionado no es un caso raro sino **el caso normal**: la sesión se
+    reabre y se corrige (el médico completa dosis y lotes después de
+    infiltrar), y cada corrección regenera el PDF. El anterior queda donde
+    estaba: es el papel que se firmó antes de la corrección, y perderlo sería
+    borrar el rastro de qué se cambió.
+    """
+    return _ruta_documento_nueva(dir_datos, codigo, paciente_nombre, fecha_iso,
+                                 "infiltraciones", "INFILTRACIONES",
+                                 "este registro de infiltraciones")
 
 
 def precargar_datos_medico(conexion: sqlite3.Connection) -> None:
@@ -1456,6 +1660,271 @@ def validar_items(crudos: Any, exigir: bool = True) -> list[dict[str, str]]:
     return limpios
 
 
+def validar_items_examen(crudos: Any, exigir: bool = True) -> list[dict[str, str]]:
+    """Limpia los renglones de la orden y exige al menos un análisis (contrato §5).
+
+    Espejo exacto de `validar_items`, y con la misma razón para cada decisión:
+    los renglones vacíos del formulario se descartan en silencio —el
+    formulario arranca con varios— y lo que no se puede es *guardar* una orden
+    sin ningún análisis.
+
+    Con `exigir=False` se admite la lista vacía, para `/api/examenes/medir`:
+    ahí la pantalla mide mientras el médico escribe y todavía no cargó nada, y
+    devolverle un 400 en cada tecla del nombre del paciente sería inservible.
+
+    Los topes son los que ya existen. `muestra` es una palabra («Sangre»,
+    «Orina») y va con el recorte corto de la cantidad del récipe; la
+    preparación es un párrafo que el paciente lee, y va con `MAX_TEXTO_LARGO`
+    como las indicaciones de un medicamento.
+    """
+    if crudos is None:
+        crudos = []
+    if not isinstance(crudos, list):
+        raise ErrorEntrada("La lista de análisis llegó mal. Volvé a intentar.")
+    if len(crudos) > MAX_ITEMS:
+        raise ErrorEntrada(
+            f"Son demasiados renglones ({len(crudos)}). Pedí los análisis en "
+            "dos órdenes."
+        )
+
+    limpios: list[dict[str, str]] = []
+    for crudo in crudos:
+        if not isinstance(crudo, Mapping):
+            continue
+        renglon = {
+            "examen": _texto(crudo.get("examen")),
+            "muestra": _texto(crudo.get("muestra"), 60),
+            "indicaciones": _texto(crudo.get("indicaciones"), MAX_TEXTO_LARGO),
+        }
+        if renglon["examen"]:
+            limpios.append(renglon)
+
+    if not limpios and exigir:
+        raise ErrorEntrada(
+            "Agregá al menos un análisis antes de guardar la orden."
+        )
+    return limpios
+
+
+# --------------------------------------------------------------------------
+# Validación de una sesión de infiltraciones (contrato §5)
+# --------------------------------------------------------------------------
+
+def _normalizada(valor: Any, campo: str) -> float:
+    """Una coordenada normalizada sobre la lámina: obligatoria y en ``[0, 1]``.
+
+    A diferencia de casi todo lo demás, esto no es opcional: un punto sin
+    coordenadas no es un punto, es una fila suelta que en el mapa no se puede
+    dibujar en ningún lado.
+    """
+    numero = _real(valor, campo, 0.0, 1.0)
+    if numero is None:
+        raise ErrorEntrada(
+            f"{campo} llegó vacía. Volvé a marcar ese punto sobre la lámina."
+        )
+    return numero
+
+
+def _color_marcador(valor: Any, donde: str) -> str:
+    """``#RRGGBB`` o vacío. Cualquier otra cosa se explica en criollo."""
+    texto = basedatos.limpiar(valor)
+    if not texto:
+        return ""
+    if not _RE_COLOR.match(texto):
+        raise ErrorEntrada(
+            f"El color de {donde} tiene que escribirse como #RRGGBB (por "
+            f"ejemplo #D92B2B). Llegó «{texto[:20]}»."
+        )
+    return texto.upper()
+
+
+def _validar_calibracion(crudo: Any) -> dict[str, list[float]]:
+    """Los tres puntos de referencia de la calibración de tres clics.
+
+    Es opcional: una sesión marcada a ojo sobre la lámina, sin calibrar, es
+    válida y se guarda igual. Lo que no puede pasar es que se guarde una
+    calibración a medias o con coordenadas fuera de la imagen, porque de ella
+    salen las posiciones de **todos** los puntos de plantilla y un error acá
+    mueve la sesión entera sin que se note en la tabla.
+    """
+    if crudo in (None, "", {}):
+        return {}
+    if not isinstance(crudo, Mapping):
+        raise ErrorEntrada(
+            "La calibración de la lámina llegó mal. Volvé a marcar las dos "
+            "pupilas y el mentón, o dejala sin calibrar."
+        )
+    limpia: dict[str, list[float]] = {}
+    for clave in CLAVES_CALIBRACION:
+        par = crudo.get(clave)
+        if par in (None, "", []):
+            continue
+        if not isinstance(par, (list, tuple)) or len(par) != 2:
+            raise ErrorEntrada(
+                f"El punto «{clave}» de la calibración tiene que ser un par de "
+                "coordenadas. Volvé a marcarlo sobre la lámina."
+            )
+        limpia[clave] = [
+            _normalizada(par[0], f"La coordenada horizontal de «{clave}»"),
+            _normalizada(par[1], f"La coordenada vertical de «{clave}»"),
+        ]
+    return limpia
+
+
+def _validar_productos_infiltracion(crudos: Any) -> list[dict[str, str]]:
+    """Los productos de la sesión: los que el médico tenía en la mesa ese día.
+
+    Se guardan **con la sesión** y no por referencia a un catálogo, igual que
+    los renglones del récipe (§5): el lote y la caducidad son los del frasco
+    que se usó, y dentro de un año el catálogo va a decir otra cosa.
+
+    Los `id` tienen que ser distintos entre sí porque son la llave con la que
+    cada punto elige su producto: dos productos con el mismo `id` harían que
+    la mitad de los puntos se dibujaran del color equivocado.
+    """
+    if crudos is None:
+        crudos = []
+    if not isinstance(crudos, list):
+        raise ErrorEntrada(
+            "La lista de productos llegó mal. Actualizá la pantalla y volvé a "
+            "cargarlos."
+        )
+    if len(crudos) > MAX_PRODUCTOS_INFILTRACION:
+        raise ErrorEntrada(
+            f"Cargaste {len(crudos)} productos y una sesión admite hasta "
+            f"{MAX_PRODUCTOS_INFILTRACION}. Dejá los que de verdad usaste."
+        )
+
+    limpios: list[dict[str, str]] = []
+    vistos: set[str] = set()
+    for posicion, crudo in enumerate(crudos, start=1):
+        if not isinstance(crudo, Mapping):
+            raise ErrorEntrada(
+                f"El producto {posicion} llegó mal. Actualizá la pantalla y "
+                "volvé a cargarlo."
+            )
+        identificador = _texto(crudo.get("id"), 40) or f"p{posicion}"
+        if identificador in vistos:
+            raise ErrorEntrada(
+                f"Hay dos productos con el mismo identificador «{identificador}». "
+                "Borrá el repetido y volvé a guardar."
+            )
+        vistos.add(identificador)
+        nombre = _texto(crudo.get("nombre"), 120)
+        if not nombre:
+            raise ErrorEntrada(
+                f"Ponele nombre al producto {posicion} antes de guardar la sesión."
+            )
+        limpios.append({
+            "id": identificador,
+            "nombre": nombre,
+            "tipo": _texto(crudo.get("tipo"), 40),
+            "unidad": _texto(crudo.get("unidad"), 10),
+            "color": _color_marcador(crudo.get("color"), f"«{nombre}»"),
+            "lote": _texto(crudo.get("lote"), 60),
+            "caducidad": _texto(crudo.get("caducidad"), 30),
+        })
+    return limpios
+
+
+def _validar_puntos_infiltracion(crudos: Any,
+                                 productos: Iterable[Mapping[str, Any]]
+                                 ) -> list[dict[str, Any]]:
+    """Los puntos marcados sobre la lámina, con su producto y su dosis.
+
+    Un punto **sin producto se acepta**: es el que quedó marcado y no se
+    infiltró, y el PDF lo dibuja como círculo hueco con su número. Lo que no se
+    acepta es un `productoId` que no esté entre los productos que llegaron:
+    eso no es una decisión clínica, es un formulario desincronizado, y dejarlo
+    pasar imprimiría un punto sin color ni dosis sin que nadie se entere.
+    """
+    if crudos is None:
+        crudos = []
+    if not isinstance(crudos, list):
+        raise ErrorEntrada(
+            "Los puntos del mapa llegaron mal. Actualizá la pantalla y volvé a "
+            "guardar."
+        )
+    if len(crudos) > MAX_PUNTOS_INFILTRACION:
+        raise ErrorEntrada(
+            f"Marcaste {len(crudos)} puntos y una sesión admite hasta "
+            f"{MAX_PUNTOS_INFILTRACION}. Guardá esta sesión y abrí otra para "
+            "el resto."
+        )
+
+    conocidos = {str(p["id"]) for p in productos}
+    limpios: list[dict[str, Any]] = []
+    for posicion, crudo in enumerate(crudos, start=1):
+        if not isinstance(crudo, Mapping):
+            raise ErrorEntrada(
+                f"El punto {posicion} llegó mal. Actualizá la pantalla y volvé "
+                "a guardar."
+            )
+        producto_id = _texto(crudo.get("productoId"), 40)
+        if producto_id and producto_id not in conocidos:
+            raise ErrorEntrada(
+                f"El punto {posicion} apunta a un producto que no está en la "
+                "lista de la sesión. Volvé a elegirle el producto o agregalo "
+                "antes de guardar."
+            )
+        orden = _entero(crudo.get("orden"), f"El orden del punto {posicion}",
+                        1, MAX_PUNTOS_INFILTRACION)
+        limpios.append({
+            "orden": orden if orden is not None else posicion,
+            "x": _normalizada(crudo.get("x"), f"La posición del punto {posicion}"),
+            "y": _normalizada(crudo.get("y"), f"La altura del punto {posicion}"),
+            "lado": _texto(crudo.get("lado"), 4),
+            "zona": _texto(crudo.get("zona"), 120),
+            "plantillaId": _texto(crudo.get("plantillaId"), 60),
+            "productoId": producto_id,
+            "dosis": _real(crudo.get("dosis"), f"La dosis del punto {posicion}",
+                           0.0, MAX_DOSIS_PUNTO),
+            "notas": _texto(crudo.get("notas"), 120),
+        })
+    return limpios
+
+
+def validar_sesion_infiltracion(crudo: Any) -> dict[str, Any]:
+    """El JSON de una sesión de mapeo, limpio y con los límites del contrato §5.
+
+    Devuelve el dict listo para guardar y para dibujar —las mismas claves que
+    espera `pdf_infiltraciones.generar_infiltraciones`— o levanta `ErrorEntrada`
+    con un texto que le dice al médico qué arreglar en la pantalla.
+
+    Es el mismo validador para el alta (`POST`) y para la corrección (`PUT`)
+    a propósito: la sesión viaja entera en los dos casos, y tener dos listas de
+    límites terminaría en una corrección que acepta lo que el alta rechaza.
+    """
+    if not isinstance(crudo, Mapping):
+        raise ErrorEntrada(
+            "No llegaron los datos del mapa. Volvé a intentar; si sigue "
+            "pasando, cerrá y abrí la aplicación."
+        )
+
+    vista = _texto(crudo.get("vista"), 40)
+    if not vista:
+        raise ErrorEntrada(
+            "Elegí sobre qué lámina se marcaron los puntos antes de guardar."
+        )
+    if vista not in pdf_infiltraciones.LAMINAS:
+        opciones = ", ".join(sorted(pdf_infiltraciones.LAMINAS))
+        raise ErrorEntrada(
+            f"«{vista}» no es una de las láminas de la aplicación. Elegí una de "
+            f"estas: {opciones}."
+        )
+
+    productos = _validar_productos_infiltracion(crudo.get("productos"))
+    return {
+        "fecha": (_fecha_filtro(crudo.get("fecha"), "de la sesión")
+                  or date.today().isoformat()),
+        "vista": vista,
+        "calibracion": _validar_calibracion(crudo.get("calibracion")),
+        "productos": productos,
+        "puntos": _validar_puntos_infiltracion(crudo.get("puntos"), productos),
+        "observaciones": _texto_largo(crudo.get("observaciones")),
+    }
+
+
 #: Qué se le dice al médico cuando el nombre del paciente llegó vacío. Cambia
 #: según desde dónde se guarda: en el récipe el botón dice «Guardar e imprimir»
 #: y en la Historia dice «Crear paciente» (dec. 18), y un error tiene que
@@ -1464,6 +1933,9 @@ FALTA_NOMBRE_RECIPE = "Escribí el nombre del paciente antes de guardar."
 FALTA_NOMBRE_ALTA = (
     "Escribí el nombre del paciente para darlo de alta. Es lo único "
     "obligatorio; la cédula, la edad y el teléfono se pueden completar después."
+)
+FALTA_NOMBRE_EXAMENES = (
+    "Escribí el nombre del paciente antes de guardar la orden."
 )
 
 
@@ -1536,6 +2008,123 @@ def _json_recipe(fila: Any, medicamentos: Iterable[str] = ()) -> dict[str, Any]:
         "motivo_anulacion": fila["motivo_anulacion"] or "",
         "fecha_anulacion": fila["fecha_anulacion"] or "",
     }
+
+
+def _columna(fila: Any, nombre: str, defecto: Any = None) -> Any:
+    """El valor de una columna que puede no venir en esta consulta.
+
+    `buscar_examenes` trae el JOIN con el paciente y el contador de renglones;
+    `listar_examenes_de_paciente` hace un ``SELECT *`` pelado, porque el
+    paciente ya lo sabe quien pregunta. Un `sqlite3.Row` levanta `IndexError`
+    con una clave que no está, así que esto deja armar **un solo** JSON de
+    salida para las dos, en vez de dos formas parecidas que la pantalla tendría
+    que distinguir.
+    """
+    try:
+        return fila[nombre]
+    except (IndexError, KeyError):
+        return defecto
+
+
+def _json_examen(fila: Any, analisis: Iterable[str] = ()) -> dict[str, Any]:
+    """Una orden de exámenes con la forma que muestran el historial y la historia.
+
+    Mismo criterio que `_json_recipe`: no viaja el texto entero de la orden
+    —para eso está el PDF guardado— sino lo justo para reconocerla, abrirla y
+    anularla. `analisis` es el resumen separado por comas, sacado del texto
+    literal de `examen_items`, así que dice lo que se pidió ese día (§5).
+
+    `tiene_pdf` mira el **disco** y no la columna, como en el informe: una ruta
+    guardada que apunta a un archivo que el médico movió es exactamente el caso
+    en que la pantalla tiene que mostrar la orden sin ofrecer reimprimirla.
+    """
+    ruta = basedatos.limpiar(_columna(fila, "ruta_pdf"))
+    return {
+        "id": int(fila["id"]),
+        "codigo": fila["codigo"],
+        "paciente_id": int(fila["paciente_id"]),
+        "fecha_emision": fila["fecha_emision"],
+        "paciente_nombre": _columna(fila, "paciente_nombre") or "",
+        "cedula": _columna(fila, "paciente_cedula") or "",
+        "diagnostico": _columna(fila, "diagnostico") or "",
+        "indicaciones_generales": _columna(fila, "indicaciones_generales") or "",
+        "analisis": ", ".join(a for a in analisis if a),
+        "cantidad_items": int(_columna(fila, "cantidad_items", 0) or 0),
+        "anulado": bool(fila["anulado"]),
+        "motivo_anulacion": _columna(fila, "motivo_anulacion") or "",
+        "fecha_anulacion": _columna(fila, "fecha_anulacion") or "",
+        "tiene_pdf": bool(ruta) and Path(ruta).is_file(),
+    }
+
+
+def _json_infiltracion(fila: Any) -> dict[str, Any]:
+    """Una sesión de mapeo entera, con sus tres columnas JSON ya parseadas.
+
+    Acá **sí** viaja todo —calibración, productos y puntos—, y no es una
+    inconsistencia con el récipe: la sesión se reabre para corregirla y para
+    compararla con la de hoy (contrato §6), así que la pantalla necesita
+    volver a dibujar el mapa exacto que se guardó. Un récipe, en cambio, es un
+    documento cerrado que solo se reimprime.
+    """
+    datos = basedatos.infiltracion_a_dict(fila)
+    if not datos:
+        return {}
+    ruta = basedatos.limpiar(datos.get("ruta_pdf"))
+    datos["anulado"] = bool(datos.get("anulado"))
+    datos["tiene_pdf"] = bool(ruta) and Path(ruta).is_file()
+    datos["cantidad_puntos"] = len(datos.get("puntos") or [])
+    return datos
+
+
+def catalogo_zonas(plantillas: Mapping[str, Any]) -> list[dict[str, str]]:
+    """El catálogo de zonas del encargo original, agrupado por región.
+
+    Sale de tres fuentes que se suman sin repetirse: las nueve familias de
+    `pdf_infiltraciones.ZONAS_CATALOGO` —que es de donde el PDF saca la región
+    de cada fila, así que la pantalla y el papel agrupan igual por
+    construcción—, las zonas que de verdad aparecen en los 35 puntos de
+    `plantillas.json`, y el grupo «Otras», que no clasifica ningún punto de
+    fábrica y por eso no vivía en el módulo del PDF.
+
+    El orden es el anatómico del contrato (de la frente al cuello), no
+    alfabético: el médico busca la zona siguiendo la cara.
+
+    El catálogo es un punto de partida y no una lista cerrada (§0.6): la
+    pantalla deja escribir una zona que no figure, y `region_de_zona` la
+    clasifica igual por su prefijo.
+    """
+    por_region: dict[str, list[str]] = {}
+    vistas: set[str] = set()
+
+    def sumar(texto: Any) -> None:
+        limpio = basedatos.limpiar(texto)
+        if not limpio:
+            return
+        clave = basedatos.normalizar(limpio)
+        if clave in vistas:
+            return
+        vistas.add(clave)
+        region = pdf_infiltraciones.region_de_zona(limpio)
+        por_region.setdefault(region, []).append(limpio)
+
+    for region in pdf_infiltraciones.ORDEN_REGIONES:
+        for zona in pdf_infiltraciones.ZONAS_CATALOGO.get(region, ()):
+            sumar(zona)
+    for punto in plantillas.get("puntos") or ():
+        if isinstance(punto, Mapping):
+            sumar(punto.get("zona"))
+    for zona in ZONAS_OTRAS:
+        sumar(zona)
+
+    return [
+        {
+            "texto": texto,
+            "region": region,
+            "region_etiqueta": pdf_infiltraciones.ETIQUETA_REGION[region],
+        }
+        for region in pdf_infiltraciones.ORDEN_REGIONES
+        for texto in por_region.get(region, ())
+    ]
 
 
 def codigo_relleno(conexion: sqlite3.Connection) -> str:
@@ -1621,6 +2210,50 @@ def codigo_para_previa(conexion: sqlite3.Connection,
     fila = paciente_existente(conexion, paciente)
     codigo = basedatos.limpiar(fila["codigo"]) if fila is not None else ""
     return codigo or codigo_relleno(conexion)
+
+
+def resolver_paciente(conexion: sqlite3.Connection,
+                      paciente: Mapping[str, Any]) -> int:
+    """El id del paciente que recibe el documento, dándolo de alta si es nuevo.
+
+    Es el paso 2 de `guardar_recipe`, extraído para que la orden de exámenes lo
+    haga **exactamente igual** (contrato §5: "mismo orden de operaciones"). Se
+    espera estar ya dentro de la transacción inmediata del guardado.
+
+    Si el pedido trae `paciente.id` —lo que manda el autocompletado— se usa ese
+    y se le guarda lo que llegó con valor: completa lo que estaba vacío (el
+    médico va cargando de a poco) y también aplica las correcciones, porque la
+    ficha llega en pantalla y §7-A promete que se pueden corregir. Un campo que
+    llega vacío **nunca** borra lo que ya estaba: borrar es otra cosa y no se
+    hace de refilón al emitir un documento.
+    """
+    if not paciente.get("id"):
+        return basedatos.obtener_o_crear_paciente(
+            conexion,
+            nombre=paciente["nombre"],
+            cedula=paciente["cedula"],
+            fecha_nacimiento=paciente["fecha_nacimiento"],
+            edad=paciente["edad"],
+            sexo=paciente["sexo"],
+            telefono=paciente["telefono"],
+        )
+
+    fila = basedatos.obtener_paciente(conexion, int(paciente["id"]))
+    if fila is None:
+        raise ErrorEntrada(
+            "El paciente que elegiste ya no está en la lista. "
+            "Volvé a buscarlo o escribí el nombre de nuevo."
+        )
+    paciente_id = int(fila["id"])
+    cambios = {
+        campo: paciente[campo]
+        for campo in ("cedula", "fecha_nacimiento", "edad", "sexo", "telefono")
+        if paciente[campo] not in (None, "")
+        and str(paciente[campo]) != str(fila[campo] or "")
+    }
+    if cambios:
+        basedatos.actualizar_paciente(conexion, paciente_id, **cambios)
+    return paciente_id
 
 
 def _datos_pdf(codigo: str, paciente_nombre: str, fecha: str,
@@ -1727,6 +2360,51 @@ def crear_app(dir_datos: str | os.PathLike[str],
             f"El nombre del paciente no entra en el renglón ({err}). Escribilo "
             "más corto: por ejemplo, un nombre y un apellido."
         )}), 400
+
+    # Los tres del PDF de la orden de exámenes (contrato §5). Van aparte de los
+    # del récipe **a propósito**: `pdf_examenes` tiene su propia familia de
+    # errores —cuelga de `ExamenesError`, no de `RecipeError`— justamente para
+    # que cada documento pueda decir lo suyo. Si compartieran manejador, una
+    # orden de laboratorio que no entra en la hoja le pediría al médico que
+    # "saque un medicamento", que es una instrucción que no puede seguir.
+    #
+    # `pdf_examenes.RecursoFaltanteError` sí hereda de
+    # `pdf_comun.RecursoFaltanteError`, pero es **hermana** de la del récipe, no
+    # su hija: Flask recorre el MRO de lo que se levantó y ninguna de las dos
+    # está en el de la otra, así que no se cruzan.
+    @app.errorhandler(pdf_examenes.RecursoFaltanteError)
+    def _error_recurso_examenes(err: pdf_examenes.RecursoFaltanteError):
+        return jsonify({"error": (
+            "Falta el logo de la orden de exámenes. Volvé a cargarlo desde "
+            f"Configuración y probá de nuevo. ({err})"
+        )}), 500
+
+    @app.errorhandler(pdf_examenes.ContenidoNoCabeError)
+    def _error_no_cabe_examenes(err: pdf_examenes.ContenidoNoCabeError):
+        return jsonify({"error": (
+            f"La orden no entra en la hoja ({err}). Sacá un análisis o acortá "
+            "las preparaciones, y pedí el resto en una segunda orden."
+        )}), 400
+
+    @app.errorhandler(pdf_examenes.NombreNoCabeError)
+    def _error_nombre_examenes(err: pdf_examenes.NombreNoCabeError):
+        return jsonify({"error": (
+            f"El nombre del paciente no entra en el renglón ({err}). Escribilo "
+            "más corto: por ejemplo, un nombre y un apellido."
+        )}), 400
+
+    @app.errorhandler(pdf_infiltraciones.InfiltracionesError)
+    def _error_infiltraciones(err: pdf_infiltraciones.InfiltracionesError):
+        """Falta una lámina o la vista no existe.
+
+        Uno solo para toda la familia porque las dos hijas ya traen el texto
+        escrito para el médico. La vista desconocida se ataja antes, en
+        `validar_sesion_infiltracion`; esto es la red para el pedido que llegue
+        por otro lado. Falta un recurso -> 500 (no es culpa suya, hay que
+        reinstalar); cualquier otra cosa -> 400, que sí puede arreglar.
+        """
+        estado = 500 if isinstance(err, pdf_comun.RecursoFaltanteError) else 400
+        return jsonify({"error": str(err)}), estado
 
     @app.errorhandler(pdf_informe.InformeError)
     def _error_informe(err: pdf_informe.InformeError):
@@ -1963,40 +2641,11 @@ def crear_app(dir_datos: str | os.PathLike[str],
                 "las indicaciones, y emití el resto en un segundo récipe."
             )
 
-        # 2. Todo el guardado en una sola transacción inmediata.
+        # 2. Todo el guardado en una sola transacción inmediata. El alta o la
+        # actualización del paciente la resuelve `resolver_paciente`, que es
+        # el mismo paso que corre la orden de exámenes (contrato §5).
         with basedatos.transaccion(conexion, inmediata=True):
-            if paciente["id"]:
-                fila = basedatos.obtener_paciente(conexion, paciente["id"])
-                if fila is None:
-                    raise ErrorEntrada(
-                        "El paciente que elegiste ya no está en la lista. "
-                        "Volvé a buscarlo o escribí el nombre de nuevo."
-                    )
-                paciente_id = int(fila["id"])
-                # Se guarda lo que llegó con valor: completa lo que estaba
-                # vacío (el médico va cargando de a poco) y también aplica las
-                # correcciones, porque la ficha del paciente llega en pantalla
-                # y §7-A promete que se pueden corregir. Un campo que llega
-                # vacío nunca borra lo que ya estaba: borrar es otra cosa y no
-                # se hace de refilón al emitir un récipe.
-                cambios = {
-                    campo: paciente[campo]
-                    for campo in ("cedula", "fecha_nacimiento", "edad", "sexo", "telefono")
-                    if paciente[campo] not in (None, "")
-                    and str(paciente[campo]) != str(fila[campo] or "")
-                }
-                if cambios:
-                    basedatos.actualizar_paciente(conexion, paciente_id, **cambios)
-            else:
-                paciente_id = basedatos.obtener_o_crear_paciente(
-                    conexion,
-                    nombre=paciente["nombre"],
-                    cedula=paciente["cedula"],
-                    fecha_nacimiento=paciente["fecha_nacimiento"],
-                    edad=paciente["edad"],
-                    sexo=paciente["sexo"],
-                    telefono=paciente["telefono"],
-                )
+            paciente_id = resolver_paciente(conexion, paciente)
 
             recipe = codigos.crear_recipe(
                 conexion, paciente_id, items,
@@ -2661,6 +3310,11 @@ def crear_app(dir_datos: str | os.PathLike[str],
         """
         conexion = con()
         paciente = _paciente_o_404(paciente_id)
+        # Los análisis de todas las órdenes en una sola consulta, no una por
+        # orden: mismo criterio que `medicamentos_por_recipe` en el historial.
+        filas_examenes = basedatos.listar_examenes_de_paciente(conexion, paciente_id)
+        analisis_de_las_ordenes = basedatos.analisis_por_examen(
+            conexion, [int(fila["id"]) for fila in filas_examenes])
         datos = {
             "codigo": basedatos.limpiar(paciente["codigo"]),
             "paciente": basedatos.a_dict(paciente),
@@ -2676,6 +3330,20 @@ def crear_app(dir_datos: str | os.PathLike[str],
             # solo las métricas con dos puntos o más y omite la sección entera
             # si no hay ninguna, así que esto no molesta en la primera visita.
             "evolucion": series_evolucion(conexion, paciente_id),
+            # §7 de la 2.1: la historia impresa lista también lo que se le
+            # emitió al paciente. Las anuladas van marcadas, no escondidas:
+            # que una orden se haya anulado es parte de lo que pasó. Las dos
+            # funciones ya devuelven de la más nueva a la más vieja y traen las
+            # anuladas, así que acá no hay que ordenar ni filtrar nada.
+            "examenes": [
+                dict(basedatos.a_dict(fila),
+                     analisis=analisis_de_las_ordenes.get(int(fila["id"]), []))
+                for fila in filas_examenes
+            ],
+            "infiltraciones": [
+                basedatos.infiltracion_a_dict(fila)
+                for fila in basedatos.listar_infiltraciones(conexion, paciente_id)
+            ],
             "fecha": date.today().isoformat(),
         }
         with tempfile.TemporaryDirectory(prefix="recipes-historia-") as tmp:
@@ -3345,6 +4013,693 @@ def crear_app(dir_datos: str | os.PathLike[str],
         conexion = con()
         _paciente_o_404(paciente_id)
         return jsonify({"series": series_evolucion(conexion, paciente_id)})
+
+    # ===================================================================
+    # B-quater · Órdenes de exámenes (2.1, contrato §5)
+    # ===================================================================
+    # La pestaña «Exámenes» entera. Es el récipe de nuevo, con otro contenido:
+    # el mismo talonario apaisado, el mismo código del paciente, la misma
+    # carpeta, la misma medición antes de escribir y la misma anulación con
+    # motivo. Lo único de fondo que cambia es que acá no hay registro Excel: el
+    # de §9 es el registro de *récipes* —sus columnas son medicamentos— y una
+    # orden de laboratorio no tiene dónde entrar sin inventarle una hoja que
+    # nadie pidió (mismo razonamiento que en `anular_informe_emitido`).
+
+    @app.get("/api/sugerencias/analisis")
+    def sugerencias_analisis():
+        """El campo Análisis y el panel de análisis frecuentes, en un endpoint.
+
+        **Con `q`** se comporta como las demás sugerencias: `buscar_analisis`
+        con el tope de siempre, ordenado por lo más usado.
+
+        **Sin `q` devuelve el catálogo entero**, agrupado en el orden clínico
+        de `listar_analisis_por_grupo`. No es un capricho: la pantalla pinta
+        con eso el panel de casillas para tildar varios análisis de una, que es
+        la vía rápida de la pestaña (contrato §6). Devolver ahí las ocho
+        primeras dejaría el panel con ocho renglones de un catálogo de
+        setenta y pico.
+
+        `grupo`, `muestra` y `preparacion` viajan siempre porque la interfaz
+        las copia al renglón al elegir del catálogo —y las deja **editables**:
+        el catálogo es una posición de partida, no una lista cerrada (§0.6).
+        """
+        conexion = con()
+        termino = request.args.get("q", "")
+        filas = (basedatos.buscar_analisis(conexion, termino)
+                 if basedatos.limpiar(termino)
+                 else basedatos.listar_analisis_por_grupo(conexion))
+        return jsonify({"resultados": [
+            {
+                "id": f["id"],
+                "texto": f["texto"],
+                "grupo": f["grupo"] or "",
+                "muestra": f["muestra"] or "",
+                "preparacion": f["preparacion"] or "",
+                "veces_usado": int(f["veces_usado"] or 0),
+            }
+            for f in filas
+        ]})
+
+    @app.post("/api/examenes/medir")
+    def medir_examenes():
+        """¿Entra la orden en la hoja? Se responde ANTES de generar.
+
+        Igual que `/api/medir`, y con las mismas claves de respuesta: el
+        medidor de `pdf_examenes` devuelve `rp_*` e `ind_*` a propósito, para
+        que el aviso de capacidad de la pantalla sea exactamente el que ya
+        anda con el récipe.
+        """
+        cuerpo = _cuerpo()
+        datos = _datos_pdf(
+            codigo=codigo_relleno(con()),
+            paciente_nombre=_texto(cuerpo.get("paciente_nombre"), 120),
+            fecha=codigos.normalizar_fecha(None),
+            items=validar_items_examen(cuerpo.get("items"), exigir=False),
+            indicaciones_generales=_texto_largo(cuerpo.get("indicaciones_generales")),
+        )
+        return jsonify(pdf_examenes.medir_contenido(
+            datos, ruta_logo=logo(),
+            dir_fuentes=app.config["DIR_FUENTES"],
+        ))
+
+    @app.post("/api/examenes/vista-previa")
+    def vista_previa_examenes():
+        """PDF de muestra de la orden, sin escribir **nada** (§6.2).
+
+        Mismo criterio que la previa del récipe: el código que se ve es el del
+        paciente si ya está en la base, y el relleno ``EC-____`` si es alguien
+        nuevo. El PDF se arma en una carpeta temporal que se borra sola, así
+        que en ``pacientes\\`` no queda nada —ni siquiera la carpeta, que se
+        crea recién al guardar— y las previas no ensucian el archivo.
+        """
+        cuerpo = _cuerpo()
+        paciente = validar_paciente(cuerpo.get("paciente"), FALTA_NOMBRE_EXAMENES)
+        items = validar_items_examen(cuerpo.get("items"))
+        fecha = _texto(cuerpo.get("fecha_emision"), 30) or None
+
+        datos = _datos_pdf(
+            codigo=codigo_para_previa(con(), paciente),
+            paciente_nombre=paciente["nombre"],
+            fecha=codigos.normalizar_fecha(fecha),
+            items=items,
+            indicaciones_generales=_texto_largo(cuerpo.get("indicaciones_generales")),
+        )
+        with tempfile.TemporaryDirectory(prefix="examenes-previa-") as tmp:
+            destino = os.path.join(tmp, "previa.pdf")
+            pdf_examenes.generar_examenes(
+                datos, destino, ruta_logo=logo(),
+                dir_fuentes=app.config["DIR_FUENTES"],
+            )
+            with open(destino, "rb") as archivo:
+                contenido = archivo.read()
+        return send_file(
+            io.BytesIO(contenido), mimetype="application/pdf",
+            as_attachment=False, download_name="vista-previa-examenes.pdf",
+        )
+
+    @app.post("/api/examenes")
+    def guardar_examenes():
+        """El botón **Guardar e imprimir** de la pestaña Exámenes, entero.
+
+        Mismo orden de operaciones que `guardar_recipe`, y por las mismas
+        razones:
+
+        1. Se valida y se **mide** antes de tocar la base. Si la orden no entra
+           en la hoja, el médico se entera sin que se haya escrito una sola
+           fila ni quemado ningún número (§6.2).
+        2. Una sola transacción ``BEGIN IMMEDIATE``: alta o actualización del
+           paciente, `asegurar_codigo_paciente`, `crear_examen` con sus
+           renglones y `aprender_analisis`. Si algo falla, no queda ni la orden
+           ni el número ni el término aprendido a medias.
+        3. Recién con el código en la mano, la carpeta del paciente (dec. 17),
+           el PDF adentro de ``examenes\\`` y el visor.
+
+        **Si el PDF falla, la orden queda guardada**: se responde 500 con el
+        código y con dónde buscarla para reimprimirla, igual que el récipe. Lo
+        contrario —descartar la orden porque el dibujo no salió— le haría
+        escribir de nuevo diez análisis que ya estaban bien.
+        """
+        cuerpo = _cuerpo()
+        paciente = validar_paciente(cuerpo.get("paciente"), FALTA_NOMBRE_EXAMENES)
+        items = validar_items_examen(cuerpo.get("items"))
+        diagnostico = _texto(cuerpo.get("diagnostico"))
+        notas = _texto(cuerpo.get("notas"), MAX_TEXTO_LARGO)
+        generales = _texto_largo(cuerpo.get("indicaciones_generales"))
+        fecha_pedida = _texto(cuerpo.get("fecha_emision"), 30) or None
+        fecha = codigos.normalizar_fecha(fecha_pedida)
+
+        conexion = con()
+
+        consulta_id = _entero(cuerpo.get("consulta_id"), "La consulta", 1, 2 ** 31)
+        if consulta_id is not None and basedatos.obtener_consulta(
+                conexion, consulta_id) is None:
+            raise ErrorEntrada(
+                "Esa consulta ya no está en la historia. Actualizá la pantalla "
+                "y volvé a elegirla."
+            )
+
+        # 1. Medir antes de escribir nada.
+        medida = pdf_examenes.medir_contenido(
+            _datos_pdf(codigo_relleno(conexion), paciente["nombre"], fecha,
+                       items, generales),
+            ruta_logo=logo(), dir_fuentes=app.config["DIR_FUENTES"],
+        )
+        if not medida.get("entra"):
+            raise ErrorEntrada(
+                "La orden no entra en la hoja. Sacá un análisis o acortá las "
+                "preparaciones, y pedí el resto en una segunda orden."
+            )
+
+        # 2. Todo el guardado en una sola transacción inmediata.
+        with basedatos.transaccion(conexion, inmediata=True):
+            paciente_id = resolver_paciente(conexion, paciente)
+            codigo = codigos.asegurar_codigo_paciente(conexion, paciente_id)
+            examen_id = basedatos.crear_examen(
+                conexion, paciente_id, codigo, items,
+                fecha_emision=fecha,
+                diagnostico=diagnostico or None,
+                notas=notas or None,
+                indicaciones_generales=generales or None,
+                consulta_id=consulta_id,
+            )
+            # Lo que el médico escribió y no estaba en el catálogo se aprende
+            # acá adentro, con la orden: un análisis aprendido de una orden que
+            # después no se guardó sería una sugerencia sin respaldo (§8).
+            basedatos.aprender_analisis(conexion, items)
+
+        # 3. Con el código asignado, la carpeta del paciente (dec. 17).
+        carpeta_paciente(app.config["DIR_DATOS"], codigo, paciente["nombre"])
+
+        # 4. PDF, ruta y visor.
+        destino = ruta_examenes_nueva(app.config["DIR_DATOS"], codigo,
+                                      paciente["nombre"], fecha)
+        try:
+            pdf_examenes.generar_examenes(
+                _datos_pdf(codigo, paciente["nombre"], fecha, items, generales),
+                str(destino),
+                ruta_logo=logo(),
+                dir_fuentes=app.config["DIR_FUENTES"],
+            )
+        except Exception as err:  # la orden YA está guardada: no se pierde
+            return jsonify({"error": (
+                f"La orden de {codigo} quedó guardada, pero no se pudo crear "
+                f"el PDF: {err}. Buscala en el historial de exámenes y "
+                "reimprimila."
+            )}), 500
+
+        basedatos.guardar_ruta_pdf_examen(conexion, examen_id, str(destino))
+        abrir_en_visor(destino)
+        return jsonify({
+            "id": examen_id,
+            # Va también el paciente: si era nuevo y se escribió a mano, este
+            # es el único momento en que la pantalla se entera de su `id`, y
+            # sin él no puede pedir la lista de órdenes que acaba de engordar.
+            "paciente_id": paciente_id,
+            "codigo": codigo,
+            "fecha_emision": fecha,
+            "ruta_pdf": str(destino),
+            "cantidad_items": len(items),
+        })
+
+    @app.get("/api/examenes")
+    def listar_examenes():
+        """Historial de órdenes: código, paciente, cédula o nombre del análisis.
+
+        Un solo campo `q` para las cuatro cosas y rango de fechas opcional,
+        igual que el Historial de récipes y con el mismo tope de 200: buscar es
+        para encontrar una orden, no para leer la base entera.
+
+        Buscar por código trae **todas** las del paciente, de la más nueva a la
+        más vieja: es lo que quiere el que tiene una orden impresa en la mano.
+        """
+        conexion = con()
+        filas = basedatos.buscar_examenes(
+            conexion,
+            request.args.get("q", ""),
+            desde=_fecha_filtro(request.args.get("desde"), "desde"),
+            hasta=_fecha_filtro(request.args.get("hasta"), "hasta"),
+            limite=LIMITE_HISTORIAL,
+        )
+        por_examen = basedatos.analisis_por_examen(
+            conexion, [int(f["id"]) for f in filas]
+        )
+        return jsonify({"resultados": [
+            _json_examen(f, por_examen.get(int(f["id"]), [])) for f in filas
+        ]})
+
+    @app.get("/api/pacientes/<int:paciente_id>/examenes")
+    def listar_examenes_paciente(paciente_id: int):
+        """Las órdenes de ese paciente, para la historia clínica (contrato §7).
+
+        Las anuladas vienen también, marcadas: que una orden se haya anulado es
+        parte de lo que pasó y esconderlo sería mentirle al que lee la historia
+        (mismo criterio que los récipes y los informes).
+        """
+        conexion = con()
+        _paciente_o_404(paciente_id)
+        filas = basedatos.listar_examenes_de_paciente(conexion, paciente_id)
+        por_examen = basedatos.analisis_por_examen(
+            conexion, [int(f["id"]) for f in filas]
+        )
+        return jsonify({"examenes": [
+            _json_examen(f, por_examen.get(int(f["id"]), [])) for f in filas
+        ]})
+
+    def _examen_o_404(examen_id: int):
+        fila = basedatos.obtener_examen_completo(con(), examen_id)
+        if fila is None:
+            raise _NoEncontrado(
+                "Esa orden de exámenes ya no está en la lista. Volvé a "
+                "buscarla en el historial."
+            )
+        return fila
+
+    def _pdf_examen_o_404(fila) -> Path:
+        """Ruta del PDF guardado de la orden, o un 404 que nombra el archivo."""
+        ruta = basedatos.limpiar(_columna(fila, "ruta_pdf"))
+        if not ruta or not Path(ruta).is_file():
+            raise _NoEncontrado(
+                f"No encuentro el PDF de la orden de {fila['codigo']} del "
+                f"{str(fila['fecha_emision'])[:10]}. Si moviste o borraste la "
+                "carpeta del paciente, restaurá el último respaldo desde "
+                f"Configuración. (Lo buscaba en: {ruta or 'ninguna ruta guardada'})"
+            )
+        return Path(ruta)
+
+    @app.get("/api/examenes/<int:examen_id>/pdf")
+    def pdf_examen_guardado(examen_id: int):
+        """El MISMO archivo que se emitió, byte por byte.
+
+        No se regenera: una orden emitida es un documento histórico, la tiene
+        el laboratorio en la mano y el PDF que se reimprime tiene que ser el
+        que salió ese día. Se lee entero a memoria y se manda desde ahí, como
+        el récipe: con el handle abierto, Windows no deja mover ni borrar el
+        archivo mientras la aplicación esté corriendo.
+        """
+        fila = _examen_o_404(examen_id)
+        ruta = _pdf_examen_o_404(fila)
+        try:
+            contenido = ruta.read_bytes()
+        except OSError as err:
+            raise _NoEncontrado(
+                f"No se pudo leer el PDF de la orden de {fila['codigo']}. "
+                "Fijate que la carpeta del paciente esté disponible y probá de "
+                f"nuevo. ({err})"
+            ) from err
+        return send_file(
+            io.BytesIO(contenido), mimetype="application/pdf",
+            as_attachment=False, download_name=ruta.name, max_age=0,
+        )
+
+    @app.post("/api/examenes/<int:examen_id>/abrir")
+    def abrir_examen(examen_id: int):
+        """Reimprimir: abre el PDF guardado en el visor del sistema."""
+        fila = _examen_o_404(examen_id)
+        ruta = _pdf_examen_o_404(fila)
+        if not abrir_con_el_sistema(ruta) and not _abrir_desactivado():
+            return jsonify({"error": (
+                "No se pudo abrir el PDF con el visor de Windows. Abrilo a "
+                f"mano desde: {ruta}"
+            )}), 500
+        return jsonify({"ok": True})
+
+    @app.post("/api/examenes/<int:examen_id>/anular")
+    def anular_examen_emitido(examen_id: int):
+        """Anula una orden con motivo escrito. No borra nada, nunca (§2.4).
+
+        Mismo molde que `anular_recipe`: el PDF queda en disco —el laboratorio
+        puede tener una copia y hay que poder comparar contra qué se anuló—, el
+        motivo queda escrito y anular dos veces es un 400 que no pisa el motivo
+        original. No hay des-anular: si el médico se arrepiente, emite otra.
+        """
+        cuerpo = _cuerpo()
+        motivo = _texto(cuerpo.get("motivo"), MAX_TEXTO_LARGO)
+        if not motivo:
+            raise ErrorEntrada(
+                "Escribí el motivo de la anulación antes de anular la orden."
+            )
+
+        conexion = con()
+        fila = _examen_o_404(examen_id)
+        if fila["anulado"]:
+            fecha = basedatos.limpiar(fila["fecha_anulacion"])[:10]
+            raise ErrorEntrada(
+                f"La orden de {fila['codigo']} del "
+                f"{str(fila['fecha_emision'])[:10]} ya estaba anulada"
+                + (f" el {fecha}" if fecha else "")
+                + f". Motivo: {fila['motivo_anulacion'] or 'sin motivo guardado'}."
+            )
+
+        with basedatos.transaccion(conexion, inmediata=True):
+            basedatos.anular_examen(conexion, examen_id, motivo)
+
+        actualizada = basedatos.obtener_examen_completo(conexion, examen_id)
+        analisis = basedatos.analisis_por_examen(conexion, [examen_id])
+        return jsonify(_json_examen(actualizada, analisis.get(examen_id, [])))
+
+    # ===================================================================
+    # B-quinquies · Mapa de infiltraciones (2.1, contrato §5)
+    # ===================================================================
+    # La pestaña «Infiltraciones». Se parece al récipe en lo que importa —el
+    # código del paciente, la carpeta, el PDF que nunca se pisa, la anulación
+    # con motivo— y se separa en una cosa: la sesión **se reabre y se corrige**.
+    # El médico marca los puntos mientras infiltra y completa dosis y lotes
+    # después, así que `PUT` es parte del flujo normal y no una excepción; cada
+    # corrección escribe un PDF nuevo y deja el anterior donde estaba.
+
+    def _dir_laminas() -> Path:
+        """Dónde viven las dos láminas y `plantillas.json`.
+
+        Se le pregunta a `pdf_infiltraciones`, que es quien las lee para
+        dibujar: si algún día se mueven, se mueven en un solo lugar y la
+        pantalla y el papel no pueden terminar mirando carpetas distintas.
+        """
+        return Path(pdf_infiltraciones.DIR_LAMINAS_DEFECTO)
+
+    @app.get("/api/infiltraciones/catalogo")
+    def catalogo_infiltraciones():
+        """Todo lo que la pestaña necesita para dibujar el mapa, en un pedido.
+
+        - `vistas`: las dos láminas con su tamaño en píxeles y su **calibración
+          de fábrica**, que es de donde salen las posiciones de los 35 puntos.
+        - `puntos` y `plantillas`: los de `recursos/infiltraciones/plantillas.json`,
+          tal cual están en el archivo.
+        - `zonas`: el catálogo de zonas agrupado por región anatómica.
+        - `productos`: los genéricos precargados, editables y ampliables.
+
+        Todo esto es **estático**: no depende del paciente ni de la base, y por
+        eso viaja junto y una sola vez al abrir la pestaña, en vez de un pedido
+        por cosa cada vez que se cambia de lámina.
+        """
+        plantillas = pdf_infiltraciones.cargar_plantillas(str(_dir_laminas()))
+        return jsonify({
+            "vistas": [
+                {
+                    "id": vista["id"],
+                    "etiqueta": vista["etiqueta"],
+                    "url": vista["url"],
+                    "ancho": vista["ancho"],
+                    "alto": vista["alto"],
+                    "calibracion": vista["calibracion"],
+                }
+                for vista in VISTAS_INFILTRACION
+            ],
+            "puntos": plantillas.get("puntos") or [],
+            "plantillas": plantillas.get("plantillas") or [],
+            "zonas": catalogo_zonas(plantillas),
+            "productos": [dict(p) for p in PRODUCTOS_INFILTRACION],
+        })
+
+    @app.get("/recursos/infiltraciones/<archivo>")
+    def lamina_infiltraciones(archivo: str):
+        """Sirve las dos láminas anatómicas. **Lista blanca de nombres.**
+
+        La ruta del archivo **no se arma con lo que llegó del cliente**: lo que
+        llega se usa nada más que como clave contra `LAMINAS_SERVIBLES`, y la
+        ruta se compone con el nombre que está escrito en esa constante. Un
+        ``..\\..\\algo``, un nombre con dos puntos o una lámina que no existe
+        no encuentran clave y salen por el 404, sin haber tocado el disco.
+
+        Es más estricto que `estatico()`, que delega en `send_from_directory`
+        —que también frena el recorrido de directorios, pero sirviendo
+        cualquier nombre que exista adentro de la carpeta—: acá los nombres
+        que se pueden pedir son exactamente dos y están enumerados.
+        """
+        # El nombre con el que se arma la ruta es **la clave de la constante**,
+        # no el texto que llegó: lo que llegó solo sirvió para elegirla.
+        nombre = next(
+            (clave for clave in LAMINAS_SERVIBLES if clave == str(archivo)),
+            None,
+        )
+        if nombre is None:
+            raise _NoEncontrado(
+                "Esa lámina no es una de las de la aplicación. Elegí la vista "
+                "de hombre o la de mujer."
+            )
+        tipo = LAMINAS_SERVIBLES[nombre]
+        ruta = _dir_laminas() / nombre
+        if not ruta.is_file():
+            raise _NoEncontrado(
+                f"Falta la lámina «{nombre}» en la instalación. Reinstalá la "
+                "aplicación para recuperarla."
+            )
+        try:
+            contenido = ruta.read_bytes()
+        except OSError as err:
+            raise _NoEncontrado(
+                f"No se pudo leer la lámina «{nombre}». ({err})"
+            ) from err
+        return send_file(
+            io.BytesIO(contenido), mimetype=tipo,
+            as_attachment=False, download_name=nombre, max_age=0,
+        )
+
+    def _infiltracion_o_404(infiltracion_id: int):
+        fila = basedatos.obtener_infiltracion(con(), infiltracion_id)
+        if fila is None:
+            raise _NoEncontrado(
+                "Ese registro de infiltraciones ya no está en la historia. "
+                "Actualizá la pantalla y volvé a buscarlo."
+            )
+        return fila
+
+    def _pdf_infiltracion_o_404(fila) -> Path:
+        ruta = basedatos.limpiar(fila["ruta_pdf"])
+        if not ruta or not Path(ruta).is_file():
+            raise _NoEncontrado(
+                f"No encuentro el PDF del registro de infiltraciones del "
+                f"{str(fila['fecha'])[:10]}. Si moviste o borraste la carpeta "
+                "del paciente, restaurá el último respaldo desde Configuración. "
+                f"(Lo buscaba en: {ruta or 'ninguna ruta guardada'})"
+            )
+        return Path(ruta)
+
+    def _emitir_pdf_infiltracion(infiltracion_id: int, paciente: Any,
+                                 codigo: str, sesion: Mapping[str, Any]) -> Path:
+        """Escribe el PDF de la sesión en la carpeta del paciente y guarda su ruta.
+
+        **Siempre en un archivo nuevo** (`ruta_infiltraciones_nueva`): tanto el
+        alta como cada corrección dejan su propio PDF, y el anterior no se
+        toca. Es la regla §0.5 del contrato y acá es la que más se usa, porque
+        corregir una sesión es lo normal.
+
+        Levanta lo que levante `generar_infiltraciones`; quien llama decide qué
+        hacer con eso, porque la sesión ya está guardada en la base.
+        """
+        nombre = basedatos.limpiar(paciente["nombre"])
+        carpeta_paciente(app.config["DIR_DATOS"], codigo, nombre)
+        destino = ruta_infiltraciones_nueva(app.config["DIR_DATOS"], codigo,
+                                            nombre, sesion["fecha"])
+        pdf_infiltraciones.generar_infiltraciones(
+            {
+                "codigo": codigo,
+                "fecha": sesion["fecha"],
+                "paciente_nombre": nombre,
+                "paciente_edad": ("" if paciente["edad"] in (None, "")
+                                  else str(paciente["edad"])),
+                "vista": sesion["vista"],
+                "productos": sesion["productos"],
+                "puntos": sesion["puntos"],
+                "observaciones": sesion["observaciones"],
+            },
+            str(destino),
+            ruta_logo=logo(),
+            dir_fuentes=app.config["DIR_FUENTES"],
+            dir_laminas=str(_dir_laminas()),
+        )
+        basedatos.guardar_ruta_pdf_infiltracion(con(), infiltracion_id,
+                                                str(destino))
+        return destino
+
+    @app.post("/api/pacientes/<int:paciente_id>/infiltraciones")
+    def crear_infiltracion_paciente(paciente_id: int):
+        """Guarda la sesión de mapeo, arma el PDF y lo abre en el visor.
+
+        El paciente sale de la historia clínica (contrato §6): viaja en la ruta
+        y se resuelve del lado del servidor, no en un campo suelto del
+        formulario. Mismo orden que el récipe y el informe: primero la
+        validación entera, después **una** transacción con el código y la
+        sesión, y recién ahí la carpeta, el PDF y el visor.
+
+        Si el PDF falla, la sesión **queda guardada**: se puede reabrir y
+        volver a imprimir desde la misma pestaña. Perder el mapa de dónde se
+        pinchó porque el dibujo no salió sería perder el registro clínico.
+        """
+        conexion = con()
+        paciente = _paciente_o_404(paciente_id)
+        cuerpo = _cuerpo()
+        sesion = validar_sesion_infiltracion(cuerpo)
+
+        consulta_id = _entero(cuerpo.get("consulta_id"), "La consulta",
+                              1, 2 ** 31)
+        if consulta_id is not None:
+            consulta = basedatos.obtener_consulta(conexion, consulta_id)
+            if consulta is None or int(consulta["paciente_id"]) != paciente_id:
+                raise ErrorEntrada(
+                    "Esa consulta no es de este paciente. Actualizá la pantalla "
+                    "y volvé a elegirla."
+                )
+
+        with basedatos.transaccion(conexion, inmediata=True):
+            codigo = codigos.asegurar_codigo_paciente(conexion, paciente_id)
+            infiltracion_id = basedatos.crear_infiltracion(
+                conexion, paciente_id, codigo,
+                vista=sesion["vista"],
+                fecha=sesion["fecha"],
+                calibracion=sesion["calibracion"] or None,
+                productos=sesion["productos"],
+                puntos=sesion["puntos"],
+                observaciones=sesion["observaciones"] or None,
+                consulta_id=consulta_id,
+            )
+
+        try:
+            destino = _emitir_pdf_infiltracion(
+                infiltracion_id, paciente, codigo, sesion)
+        except Exception as err:  # la sesión YA está guardada: no se pierde
+            return jsonify({"error": (
+                f"El registro de infiltraciones de {codigo} quedó guardado, "
+                f"pero no se pudo crear el PDF: {err}. Reabrilo desde la "
+                "pestaña y volvé a imprimirlo."
+            )}), 500
+
+        abrir_en_visor(destino)
+        respuesta = _json_infiltracion(
+            basedatos.obtener_infiltracion(conexion, infiltracion_id))
+        respuesta["ruta_pdf"] = str(destino)
+        return jsonify(respuesta), 201
+
+    @app.get("/api/pacientes/<int:paciente_id>/infiltraciones")
+    def listar_infiltraciones_paciente(paciente_id: int):
+        """Las sesiones del paciente, de la más nueva a la más vieja.
+
+        Es la lista desde la que se reabre una sesión para compararla con la de
+        hoy, que es como se decide la próxima infiltración. Las anuladas vienen
+        marcadas, no escondidas.
+        """
+        conexion = con()
+        _paciente_o_404(paciente_id)
+        return jsonify({"infiltraciones": [
+            _json_infiltracion(fila)
+            for fila in basedatos.listar_infiltraciones(conexion, paciente_id)
+        ]})
+
+    @app.get("/api/infiltraciones/<int:infiltracion_id>")
+    def ver_infiltracion(infiltracion_id: int):
+        """La sesión entera, para reabrirla y volver a dibujar el mapa exacto."""
+        return jsonify(_json_infiltracion(_infiltracion_o_404(infiltracion_id)))
+
+    @app.put("/api/infiltraciones/<int:infiltracion_id>")
+    def editar_infiltracion(infiltracion_id: int):
+        """Corrige la sesión y **regenera** el PDF (contrato §5).
+
+        El PDF nuevo va a un archivo nuevo y el viejo queda donde estaba: los
+        dos son documentos, y el anterior es el que se firmó antes de la
+        corrección. La columna `ruta_pdf` pasa a apuntar al último, que es el
+        que abren «Imprimir» y la historia.
+
+        Una sesión anulada no se corrige: anular es cerrar el registro, y
+        editarlo después dejaría un papel firmado que ya no coincide con la
+        base.
+        """
+        conexion = con()
+        fila = _infiltracion_o_404(infiltracion_id)
+        if fila["anulado"]:
+            raise ErrorEntrada(
+                "Ese registro de infiltraciones está anulado y no se puede "
+                "corregir. Si hace falta, cargá una sesión nueva."
+            )
+        paciente = _paciente_o_404(int(fila["paciente_id"]))
+        sesion = validar_sesion_infiltracion(_cuerpo())
+
+        with basedatos.transaccion(conexion, inmediata=True):
+            codigo = codigos.asegurar_codigo_paciente(
+                conexion, int(fila["paciente_id"]))
+            basedatos.actualizar_infiltracion(
+                conexion, infiltracion_id,
+                codigo=codigo,
+                fecha=sesion["fecha"],
+                vista=sesion["vista"],
+                calibracion=sesion["calibracion"] or None,
+                productos=sesion["productos"],
+                puntos=sesion["puntos"],
+                observaciones=sesion["observaciones"],
+            )
+
+        try:
+            destino = _emitir_pdf_infiltracion(
+                infiltracion_id, paciente, codigo, sesion)
+        except Exception as err:  # la corrección YA está guardada
+            return jsonify({"error": (
+                f"La corrección del registro de {codigo} quedó guardada, pero "
+                f"no se pudo crear el PDF nuevo: {err}. Reabrilo desde la "
+                "pestaña y volvé a imprimirlo."
+            )}), 500
+
+        respuesta = _json_infiltracion(
+            basedatos.obtener_infiltracion(conexion, infiltracion_id))
+        respuesta["ruta_pdf"] = str(destino)
+        return jsonify(respuesta)
+
+    @app.get("/api/infiltraciones/<int:infiltracion_id>/pdf")
+    def pdf_infiltracion_guardado(infiltracion_id: int):
+        """El MISMO archivo que se emitió la última vez, byte por byte."""
+        fila = _infiltracion_o_404(infiltracion_id)
+        ruta = _pdf_infiltracion_o_404(fila)
+        try:
+            contenido = ruta.read_bytes()
+        except OSError as err:
+            raise _NoEncontrado(
+                "No se pudo leer el PDF del registro de infiltraciones. Fijate "
+                f"que la carpeta del paciente esté disponible. ({err})"
+            ) from err
+        return send_file(
+            io.BytesIO(contenido), mimetype="application/pdf",
+            as_attachment=False, download_name=ruta.name, max_age=0,
+        )
+
+    @app.post("/api/infiltraciones/<int:infiltracion_id>/abrir")
+    def abrir_infiltracion(infiltracion_id: int):
+        """Reimprimir: abre el PDF guardado en el visor del sistema."""
+        fila = _infiltracion_o_404(infiltracion_id)
+        ruta = _pdf_infiltracion_o_404(fila)
+        if not abrir_con_el_sistema(ruta) and not _abrir_desactivado():
+            return jsonify({"error": (
+                "No se pudo abrir el PDF con el visor de Windows. Abrilo a "
+                f"mano desde: {ruta}"
+            )}), 500
+        return jsonify({"ok": True})
+
+    @app.post("/api/infiltraciones/<int:infiltracion_id>/anular")
+    def anular_infiltracion_emitida(infiltracion_id: int):
+        """Anula el registro con motivo escrito. No borra nada, nunca (§2.4).
+
+        Mismo molde que `anular_recipe`: los PDF quedan en disco, el motivo
+        queda escrito y anular dos veces es un 400 que no pisa el original.
+        """
+        cuerpo = _cuerpo()
+        motivo = _texto(cuerpo.get("motivo"), MAX_TEXTO_LARGO)
+        if not motivo:
+            raise ErrorEntrada(
+                "Escribí el motivo de la anulación antes de anular el registro."
+            )
+
+        conexion = con()
+        fila = _infiltracion_o_404(infiltracion_id)
+        if fila["anulado"]:
+            fecha = basedatos.limpiar(fila["fecha_anulacion"])[:10]
+            raise ErrorEntrada(
+                f"El registro de infiltraciones del {str(fila['fecha'])[:10]} "
+                "ya estaba anulado"
+                + (f" el {fecha}" if fecha else "")
+                + f". Motivo: {fila['motivo_anulacion'] or 'sin motivo guardado'}."
+            )
+
+        with basedatos.transaccion(conexion, inmediata=True):
+            basedatos.anular_infiltracion(conexion, infiltracion_id, motivo)
+
+        return jsonify(_json_infiltracion(
+            basedatos.obtener_infiltracion(conexion, infiltracion_id)))
 
     # ===================================================================
     # C · Configuración (§7-C, §10)

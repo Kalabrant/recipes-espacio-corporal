@@ -1129,6 +1129,11 @@ function montarPestanas() {
     if (destino === "panel-nuevo") aplicarDefaultDeHistoria();
     if (destino === "panel-historial") alAbrirHistorial();
     if (destino === "panel-config") alAbrirConfiguracion();
+    // Las pestañas de la 2.1 (Exámenes, Infiltraciones) viven en sus propios
+    // archivos y se registran solas: acá solo se les avisa que les toca.
+    Recipes.modulos.forEach((m) => {
+      if (m.panel === destino && m.alAbrir) m.alAbrir();
+    });
   }
 
   irAPestana = activar;
@@ -1229,6 +1234,18 @@ function arrancar() {
   window.addEventListener("beforeunload", soltarPrevia);
 
   actualizarBotonGuardar();
+
+  // Los módulos de la 2.1 se montan al final, cuando el resto de la interfaz
+  // ya está en pie: cualquiera de ellos puede pedirle algo al puente. Que uno
+  // falle no puede dejar la app sin récipes, que es lo que el médico usa todos
+  // los días: se anota en la consola y se sigue.
+  Recipes.modulos.forEach((m) => {
+    try {
+      if (m.montar) m.montar();
+    } catch (err) {
+      console.error("No se pudo montar la pestaña «" + (m.nombre || m.panel) + "»:", err);
+    }
+  });
 
   // Con el cerrojo puesto el foco es del PIN: arrancarCerrojo() lo maneja.
   if (!cerrojoPuesto()) enfocarPestanaActiva();
@@ -3305,6 +3322,7 @@ async function cargarHistoria(pacienteId) {
   nHc.alergias.hidden = true;
   cerrarPdfHistoria();
   prepararInformes();
+  prepararEmitidos();
 
   try {
     const datos = await pedirCuerpo("api/pacientes/" + encodeURIComponent(pacienteId) + "/historia", {});
@@ -3333,6 +3351,7 @@ async function cargarHistoria(pacienteId) {
     // historia nueva y en la sección Anexos, que están las dos a la vista.
     cargarBandeja();
     cargarEvolucion();
+    cargarEmitidos();
   } catch (err) {
     if (mio !== hc.pidiendo) return;
     errorHistoria(motivoLegible(err,
@@ -5459,6 +5478,7 @@ function montarHistoria() {
   });
 
   montarInformes();
+  montarEmitidos();
 
   window.addEventListener("beforeunload", soltarArchivoElegido);
 }
@@ -5477,6 +5497,334 @@ function alAbrirHistoria() {
   }
   cargarBandeja();
 }
+
+
+/* ============================================================
+   LO EMITIDO, EN LA HISTORIA  (2.1, §7)
+   ============================================================
+   Las órdenes de exámenes y los mapas de infiltraciones se EMITEN desde sus
+   pestañas, pero se MIRAN desde acá: cuando el médico abre la historia de
+   alguien, lo que busca es qué le pidió y qué le hizo. Por eso estas dos
+   secciones no tienen formulario —sería una tercera copia del que ya existe
+   dos veces— y sí tienen el botón que lleva a la pestaña con el paciente ya
+   puesto, más el «Abrir PDF» de cada renglón.
+
+   Las anuladas se muestran tachadas, nunca escondidas: que una orden se haya
+   anulado es parte de lo que pasó, y el mismo criterio siguen el PDF de la
+   historia y el registro de Excel.
+   ============================================================ */
+
+const emi = {
+  examenes: [],
+  mapas: [],
+  pidiendo: 0,          // número de pedido, para descartar respuestas viejas
+  cargado: false
+};
+
+const nEmi = {
+  listaEx:    $("#hc-lista-examenes"),
+  vacioEx:    $("#hc-examenes-vacio"),
+  nuevaOrden: $("#hc-nueva-orden"),
+  listaMapas: $("#hc-lista-infiltraciones"),
+  vacioMapas: $("#hc-infiltraciones-vacio"),
+  nuevoMapa:  $("#hc-nuevo-mapa")
+};
+
+/** Cómo se llama cada lámina en castellano, para no mostrar el id crudo. */
+const LAMINAS_HISTORIA = {
+  "mujer-frontal":  "Lámina femenina, vista frontal",
+  "hombre-frontal": "Lámina masculina, vista frontal"
+};
+
+/**
+ * Totales de dosis por producto de un mapa, sumados acá.
+ *
+ * El backend manda la sesión entera —productos y puntos— porque la pestaña la
+ * reabre para corregirla, así que la cuenta sale de los mismos datos que usa
+ * el PDF y no de un campo aparte que podría discrepar.
+ */
+function totalesDelMapa(m) {
+  const porId = {};
+  (m.productos || []).forEach((p) => { porId[p.id] = p; });
+  const suma = {};
+  (m.puntos || []).forEach((punto) => {
+    const p = porId[punto.productoId];
+    const dosis = Number(punto.dosis);
+    if (!p || !Number.isFinite(dosis) || dosis <= 0) return;
+    if (!suma[p.id]) suma[p.id] = { nombre: p.nombre, unidad: p.unidad || "", total: 0 };
+    suma[p.id].total += dosis;
+  });
+  return Object.keys(suma).map((id) => {
+    const t = suma[id];
+    // Sin decimales de más: 14 U, no 14,0 U; pero 0,5 ml sigue siendo 0,5 ml.
+    const cifra = String(Math.round(t.total * 100) / 100).replace(".", ",");
+    return t.nombre + ": " + cifra + (t.unidad ? " " + t.unidad : "");
+  });
+}
+
+/** Marca de estado, con el mismo aspecto que la de los informes. */
+function marcaDeEstado(anulado, motivo) {
+  const marca = document.createElement("span");
+  marca.className = anulado ? "estado-anulado" : "estado-vigente";
+  marca.textContent = anulado ? "Anulada" : "Vigente";
+  if (anulado) {
+    const texto = document.createElement("span");
+    texto.className = "estado-motivo";
+    texto.textContent = limpio(motivo) || "Sin motivo registrado.";
+    marca.appendChild(texto);
+  }
+  return marca;
+}
+
+/**
+ * El botón «Abrir PDF» de un renglón. Es el mismo gesto que reimprimir desde
+ * «Récipes emitidos»: sale el PDF original tal cual se emitió, no uno nuevo.
+ */
+function botonAbrirPdfEmitido(ruta, caja) {
+  return botonFila("Abrir PDF", async (boton) => {
+    boton.disabled = true;
+    const antes = boton.textContent;
+    boton.textContent = "Abriendo…";
+    try {
+      const r = await fetch(ruta, { method: "POST", headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(await mensajeDeError(r, "No se pudo abrir el PDF."));
+      boton.textContent = "Se abrió";
+    } catch (err) {
+      const aviso = document.createElement("p");
+      aviso.className = "informe-sin-pdf";
+      aviso.textContent = motivoLegible(err, "No se pudo abrir el PDF.");
+      caja.appendChild(aviso);
+      boton.textContent = antes;
+    } finally {
+      boton.disabled = false;
+    }
+  });
+}
+
+/** Un renglón con rótulo y valor, como los datos de la ficha de un informe. */
+function datoDeFicha(rotulo, valor) {
+  const fila = document.createElement("p");
+  fila.className = "informe-dato";
+  const r = document.createElement("strong");
+  r.textContent = rotulo;
+  const v = document.createElement("span");
+  v.textContent = valor;
+  fila.appendChild(r);
+  fila.appendChild(v);
+  return fila;
+}
+
+function fichaOrdenDeExamenes(o) {
+  const anulado = o.anulado === true || o.anulado === 1;
+  const caja = document.createElement("article");
+  caja.className = "informe" + (anulado ? " anulado" : "");
+
+  const cabecera = document.createElement("div");
+  cabecera.className = "informe-cabecera";
+
+  const fecha = document.createElement("span");
+  fecha.className = "informe-fecha";
+  fecha.textContent = fechaLegible(soloFecha(o.fecha_emision));
+  cabecera.appendChild(fecha);
+
+  const cuantos = Number(o.cantidad_items) || 0;
+  const tipo = document.createElement("span");
+  tipo.className = "informe-tipo";
+  tipo.textContent = cuantos === 1 ? "1 análisis" : cuantos + " análisis";
+  cabecera.appendChild(tipo);
+  cabecera.appendChild(marcaDeEstado(anulado, o.motivo_anulacion));
+  caja.appendChild(cabecera);
+
+  caja.appendChild(datoDeFicha("Se pidió", limpio(o.analisis) || "(sin detalle)"));
+
+  const acciones = document.createElement("div");
+  acciones.className = "acciones-fila";
+  if (o.tiene_pdf) {
+    acciones.appendChild(botonAbrirPdfEmitido(
+      "api/examenes/" + encodeURIComponent(o.id) + "/abrir", caja));
+  } else {
+    const sin = document.createElement("p");
+    sin.className = "informe-sin-pdf";
+    sin.textContent = "El PDF de esta orden no está guardado. Lo que se pidió " +
+      "quedó en la historia: para tener el papel, emitila de nuevo.";
+    caja.appendChild(sin);
+  }
+  caja.appendChild(acciones);
+  return caja;
+}
+
+function fichaMapaDeInfiltraciones(m) {
+  const anulado = m.anulado === true || m.anulado === 1;
+  const caja = document.createElement("article");
+  caja.className = "informe" + (anulado ? " anulado" : "");
+
+  const cabecera = document.createElement("div");
+  cabecera.className = "informe-cabecera";
+
+  const fecha = document.createElement("span");
+  fecha.className = "informe-fecha";
+  fecha.textContent = fechaLegible(soloFecha(m.fecha));
+  cabecera.appendChild(fecha);
+
+  const puntos = Number(m.cantidad_puntos) || 0;
+  const tipo = document.createElement("span");
+  tipo.className = "informe-tipo";
+  tipo.textContent = puntos === 1 ? "1 punto" : puntos + " puntos";
+  cabecera.appendChild(tipo);
+  cabecera.appendChild(marcaDeEstado(anulado, m.motivo_anulacion));
+  caja.appendChild(cabecera);
+
+  caja.appendChild(datoDeFicha(
+    "Lámina", LAMINAS_HISTORIA[m.vista] || limpio(m.vista) || "(sin especificar)"));
+
+  const totales = totalesDelMapa(m);
+  if (totales.length) {
+    caja.appendChild(datoDeFicha("Se aplicó", totales.join(" · ")));
+  }
+
+  const acciones = document.createElement("div");
+  acciones.className = "acciones-fila";
+  if (m.tiene_pdf) {
+    acciones.appendChild(botonAbrirPdfEmitido(
+      "api/infiltraciones/" + encodeURIComponent(m.id) + "/abrir", caja));
+  }
+  acciones.appendChild(botonFila("Ver el mapa",
+                                 () => irAPestana("panel-infiltraciones")));
+  caja.appendChild(acciones);
+  return caja;
+}
+
+function pintarEmitidos() {
+  const secciones = [
+    [nEmi.listaEx, nEmi.vacioEx, emi.examenes, fichaOrdenDeExamenes],
+    [nEmi.listaMapas, nEmi.vacioMapas, emi.mapas, fichaMapaDeInfiltraciones]
+  ];
+  secciones.forEach((seccion) => {
+    const lista = seccion[0], vacio = seccion[1], filas = seccion[2], ficha = seccion[3];
+    lista.innerHTML = "";
+    if (!emi.cargado) {           // todavía se está pidiendo: ni el vacío
+      vacio.hidden = true;
+      return;
+    }
+    vacio.hidden = filas.length > 0;
+    filas.forEach((f) => lista.appendChild(ficha(f)));
+  });
+}
+
+/** Al cambiar de paciente: se vacía antes de pedir, para no mostrar lo ajeno. */
+function prepararEmitidos() {
+  emi.pidiendo++;
+  emi.examenes = [];
+  emi.mapas = [];
+  emi.cargado = false;
+  pintarEmitidos();
+}
+
+/**
+ * Las dos listas del paciente abierto, en paralelo.
+ *
+ * Que una falle no puede dejar sin la otra ni romper la historia entera: esto
+ * es información para mirar, no para emitir. Si el backend contesta mal, la
+ * sección queda con su texto de vacío y el médico sigue trabajando.
+ */
+async function cargarEmitidos() {
+  const paciente = hc.pacienteId;
+  if (paciente === null) return;
+  const mio = ++emi.pidiendo;
+
+  const base = "api/pacientes/" + encodeURIComponent(paciente) + "/";
+  const respuestas = await Promise.all([
+    pedirCuerpo(base + "examenes", {}).catch(() => ({})),
+    pedirCuerpo(base + "infiltraciones", {}).catch(() => ({}))
+  ]);
+  if (mio !== emi.pidiendo || hc.pacienteId !== paciente) return;
+
+  emi.examenes = Array.isArray(respuestas[0].examenes) ? respuestas[0].examenes : [];
+  emi.mapas = Array.isArray(respuestas[1].infiltraciones) ? respuestas[1].infiltraciones : [];
+  emi.cargado = true;
+  pintarEmitidos();
+}
+
+function montarEmitidos() {
+  // Los dos botones solo cambian de pestaña: el paciente lo toma de la
+  // historia el propio módulo, por `Recipes.pacienteDeLaHistoria`.
+  nEmi.nuevaOrden.addEventListener("click", () => irAPestana("panel-examenes"));
+  nEmi.nuevoMapa.addEventListener("click", () => irAPestana("panel-infiltraciones"));
+}
+
+/* ============================================================
+   PUENTE PARA LAS PESTAÑAS DE LA 2.1
+   ============================================================
+   «Exámenes» e «Infiltraciones» son pestañas nuevas y grandes, y meterlas
+   adentro de este archivo lo hubiera vuelto ilegible. Viven en `examenes.js`
+   y en `infiltraciones.js`, que se cargan DESPUÉS de este y se registran solos
+   con `Recipes.registrar({...})` en su código de arranque —o sea, antes del
+   DOMContentLoaded que dispara `arrancar()`—.
+
+   Lo que se expone acá es lo MÍNIMO que los dos necesitan, y nada más: los
+   ayudantes de red, el autocompletado, la navegación entre pestañas y el
+   paciente que esté abierto en la Historia clínica. Todo lo demás sigue siendo
+   privado de este archivo. La regla, para que esto no se convierta en un cajón
+   de sastre: si un módulo necesita algo que no está acá, se agrega a mano y
+   con nombre propio, nunca se expone el interior entero.
+
+   `window.Recipes` es además el único global que la app publica.
+   ============================================================ */
+
+const Recipes = {
+  /** Módulos de pestaña registrados: {nombre, panel, montar, alAbrir}. */
+  modulos: [],
+
+  registrar(modulo) {
+    if (!modulo || !modulo.panel) throw new Error("Un módulo necesita su `panel`.");
+    Recipes.modulos.push(modulo);
+  },
+
+  // --- red -----------------------------------------------------------
+  pedirSugerencias,
+  pedirCuerpo,
+  mensajeDeError,
+  cuerpoJson,
+  motivoLegible,
+
+  // --- interfaz ------------------------------------------------------
+  montarAutocompletar,
+  escaparHtml,
+  resaltar,
+  normalizar,
+  limpio,
+  retrasar,
+  fechaLegible,
+  atraparTab,
+  rellenoCodigo,
+
+  /** Lleva la vista a otra pestaña (la misma que usan los botones). */
+  irAPestana: (panel) => irAPestana(panel),
+
+  /** Qué pestaña está a la vista ahora mismo. */
+  get pestanaActiva() { return pestanaActiva; },
+
+  /** Prefijo de los códigos («EC»), por si un módulo arma un relleno. */
+  get prefijo() { return prefijoActual; },
+
+  /**
+   * El paciente abierto en la Historia clínica, o `null` si no hay ninguno.
+   * Es la misma fuente de la que sale el paciente de «Nuevo récipe» (dec. 18):
+   * las pestañas nuevas no vuelven a preguntar el nombre, lo heredan.
+   */
+  get pacienteDeLaHistoria() {
+    if (hc.pacienteId === null || !hc.paciente) return null;
+    return Object.assign({ id: hc.pacienteId }, hc.paciente);
+  },
+
+  /** Abre la historia de un paciente y deja la vista ahí. */
+  async abrirHistoriaDe(pacienteId) {
+    irAPestana("panel-historia");
+    await cargarHistoria(pacienteId);
+  }
+};
+
+window.Recipes = Recipes;
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", arrancar);

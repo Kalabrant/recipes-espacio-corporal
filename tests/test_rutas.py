@@ -1552,7 +1552,8 @@ class TestTextosDeLaInterfaz(unittest.TestCase):
         arbol = self.arbol()
         pestanas = arbol.buscar("nav.pestanas button.pestana")
         self.assertEqual(
-            ["tab-historia", "tab-nuevo", "tab-historial", "tab-config"],
+            ["tab-historia", "tab-nuevo", "tab-examenes", "tab-infiltraciones",
+             "tab-historial", "tab-config"],
             [p["id"] for p in pestanas],
             "cambió el orden de las pestañas")
 

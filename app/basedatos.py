@@ -17,10 +17,23 @@ Evolución 2.0 (decisiones del médico del 2026-08-18):
   - La historia clínica se reparte en `historias` (lo que se llena una vez por
     paciente) y `consultas` + `signos_vitales` (lo que se repite cada visita),
     con `anexos`, `mediciones` e `informes` colgando del paciente (dec. 3 a 13).
+
+Evolución 2.1 (build/contrato-2.1.md):
+  - Órdenes de exámenes de laboratorio (`examenes` + `examen_items`), con el
+    mismo trato que el récipe: copia literal de los textos y anulación con
+    motivo, nunca borrado.
+  - `analisis` es una tabla de términos más —entra en `TABLAS_TERMINOS`— pero
+    viene sembrada con un catálogo de fábrica. Ese catálogo es un punto de
+    partida, no una lista cerrada: el médico escribe lo que quiera y la app lo
+    aprende, y `de_fabrica` marca lo que no le corresponde pisar al aprendizaje.
+  - `infiltraciones` guarda el mapa de infiltraciones faciales entero —productos
+    y puntos como JSON— porque es un documento de una sesión, no datos que se
+    consulten por adentro.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
@@ -38,7 +51,10 @@ from typing import Any, ContextManager, Iterable, Iterator, Sequence
 LIMITE_SUGERENCIAS = 8
 
 #: Tablas de términos globales que aprende la app.
-TABLAS_TERMINOS = ("indicaciones", "diagnosticos")
+#: `analisis` entra desde la 2.1: tiene el mismo molde (texto, texto_norm,
+#: veces_usado, ultima_vez) más tres columnas propias con default, así que los
+#: ayudantes genéricos la manejan sin saber que existe.
+TABLAS_TERMINOS = ("indicaciones", "diagnosticos", "analisis")
 
 #: Denominadores impresos del cuestionario de alimentación (Parte A §2.4 del
 #: análisis). El médico anota el numerador; el denominador es fijo y la
@@ -52,6 +68,18 @@ DENOMINADORES_ALIMENTACION: dict[str, int] = {
     "alim_carbohidratos": 7,
     "alim_litros_agua": 2,
 }
+
+#: Los grupos del catálogo de análisis, en el orden en que se leen (2.1).
+#:
+#: Es el orden clínico de la §2 del contrato —el mismo con el que se sembró el
+#: catálogo en la migración—, no alfabético: la pestaña Exámenes pinta el
+#: resultado de `listar_analisis_por_grupo` tal cual, así que esta tupla es lo
+#: que el médico ve de arriba abajo en pantalla. Cambiar el orden acá cambia la
+#: pantalla, que es justamente lo que se quiere que pase.
+ORDEN_GRUPOS_ANALISIS = (
+    "Hematología", "Química sanguínea", "Hormonas", "Orina y heces",
+    "Inmunología y serología", "Marcadores", "Estudios",
+)
 
 #: Los dos informes de la Parte B del análisis (dec. 10).
 TIPOS_INFORME = ("clinico", "aseguradora")
@@ -617,6 +645,191 @@ MIGRACIONES: list[str] = [
     CREATE INDEX IF NOT EXISTS ix_recipes_codigo   ON recipes(codigo);
     CREATE INDEX IF NOT EXISTS ix_recipes_consulta ON recipes(consulta_id);
     """,
+
+    # -- versión 4: exámenes de laboratorio, catálogo de análisis e infiltraciones -
+    # Evolución 2.1 (build/contrato-2.1.md §1). Dos documentos nuevos que el
+    # médico ya hacía a mano: la orden de análisis —misma hoja del récipe, la
+    # mitad izquierda para el laboratorio y la derecha para el paciente— y el
+    # mapa de infiltraciones faciales, que hasta acá vivía en una app suelta.
+    #
+    # `analisis` es una tabla de términos más (mismo molde que `indicaciones` y
+    # `diagnosticos`, con tres columnas propias), así que entra en
+    # `TABLAS_TERMINOS` y `buscar_terminos`/`obtener_o_crear_termino` la manejan
+    # sin tocarles una línea. Se siembra con el catálogo de fábrica, que es un
+    # punto de partida y no una lista cerrada: `de_fabrica = 1` es lo que
+    # distingue lo que vino con la app de lo que escribió el médico, y es lo que
+    # impide que el aprendizaje le pise el grupo o la preparación a una fila
+    # nuestra.
+    #
+    # Las tres columnas JSON de `infiltraciones` (calibración, productos y
+    # puntos) se guardan como texto a propósito: son el documento entero de una
+    # sesión de mapeo y no se consultan por adentro, así que normalizarlas en
+    # tablas aparte sería trabajo sin comprador. `infiltracion_a_dict` las
+    # parsea y tolera basura, que es lo único que hace falta del lado del código.
+    """
+    ------------------------------------------------------ órdenes de exámenes
+    CREATE TABLE IF NOT EXISTS examenes (
+        id                     INTEGER PRIMARY KEY,
+        codigo                 TEXT    NOT NULL,          -- el del PACIENTE (EC-0001)
+        paciente_id            INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE RESTRICT,
+        consulta_id            INTEGER REFERENCES consultas(id) ON DELETE SET NULL,
+        fecha_emision          TEXT    NOT NULL,          -- ISO aaaa-mm-dd
+        diagnostico            TEXT,
+        indicaciones_generales TEXT,
+        notas                  TEXT,
+        ruta_pdf               TEXT,
+        anulado                INTEGER NOT NULL DEFAULT 0 CHECK (anulado IN (0, 1)),
+        motivo_anulacion       TEXT,
+        fecha_anulacion        TEXT,
+        creado_en              TEXT    NOT NULL,
+        actualizado_en         TEXT    NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_examenes_fecha    ON examenes(fecha_emision DESC);
+    CREATE INDEX IF NOT EXISTS ix_examenes_paciente ON examenes(paciente_id);
+    CREATE INDEX IF NOT EXISTS ix_examenes_codigo   ON examenes(codigo);
+
+    -- Copia literal de los textos, igual que `recipe_items` (§5): una orden
+    -- emitida es un documento histórico y no cambia si mañana se corrige el
+    -- catálogo.
+    CREATE TABLE IF NOT EXISTS examen_items (
+        id           INTEGER PRIMARY KEY,
+        examen_id    INTEGER NOT NULL REFERENCES examenes(id) ON DELETE CASCADE,
+        orden        INTEGER NOT NULL,
+        examen       TEXT    NOT NULL,   -- 'Hematología completa'
+        muestra      TEXT,               -- 'Sangre' | 'Orina' | 'Heces' | '' …
+        indicaciones TEXT                -- preparación de ESE análisis
+    );
+    CREATE INDEX IF NOT EXISTS ix_examen_items_examen ON examen_items(examen_id, orden);
+
+    ------------------------------------------------------ catálogo de análisis
+    CREATE TABLE IF NOT EXISTS analisis (
+        id             INTEGER PRIMARY KEY,
+        texto          TEXT    NOT NULL,
+        texto_norm     TEXT    NOT NULL UNIQUE,
+        grupo          TEXT,               -- 'Hematología', 'Química sanguínea', …
+        muestra        TEXT,
+        preparacion    TEXT,               -- 'Ayuno de 8 a 12 horas', …
+        de_fabrica     INTEGER NOT NULL DEFAULT 0 CHECK (de_fabrica IN (0, 1)),
+        veces_usado    INTEGER NOT NULL DEFAULT 0,
+        ultima_vez     TEXT,
+        creado_en      TEXT    NOT NULL,
+        actualizado_en TEXT    NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_analisis_orden ON analisis(veces_usado DESC, ultima_vez DESC);
+    CREATE INDEX IF NOT EXISTS ix_analisis_grupo ON analisis(grupo);
+
+    -- Catálogo de fábrica (contrato §2). `INSERT OR IGNORE` contra el UNIQUE de
+    -- `texto_norm`: si el médico ya había escrito uno de estos a mano, gana el
+    -- suyo y no aparece duplicado. Las marcas de tiempo salen de SQLite porque
+    -- acá no hay Python; `texto_norm` está calculado con `normalizar()` y tiene
+    -- que quedar igual, o el catálogo se duplicaría al primer uso.
+    INSERT OR IGNORE INTO analisis
+        (texto, texto_norm, grupo, muestra, preparacion,
+         de_fabrica, veces_usado, ultima_vez, creado_en, actualizado_en)
+    SELECT column1, column2, column3, column4, column5,
+           1, 0, NULL,
+           STRFTIME('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'),
+           STRFTIME('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')
+      FROM (VALUES
+        ('Hematología completa', 'hematologia completa', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Contaje de plaquetas', 'contaje de plaquetas', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Velocidad de sedimentación globular (VSG)', 'velocidad de sedimentacion globular (vsg)', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Tiempo de protrombina (PT) e INR', 'tiempo de protrombina (pt) e inr', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Tiempo parcial de tromboplastina (PTT)', 'tiempo parcial de tromboplastina (ptt)', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Grupo sanguíneo y factor Rh', 'grupo sanguineo y factor rh', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Reticulocitos', 'reticulocitos', 'Hematología', 'Sangre', 'No requiere ayuno.'),
+        ('Glicemia en ayunas', 'glicemia en ayunas', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Glicemia post-prandial (2 horas)', 'glicemia post-prandial (2 horas)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Hemoglobina glicosilada (HbA1c)', 'hemoglobina glicosilada (hba1c)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Urea', 'urea', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Creatinina', 'creatinina', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Ácido úrico', 'acido urico', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Perfil lipídico completo', 'perfil lipidico completo', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Colesterol total', 'colesterol total', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Colesterol HDL', 'colesterol hdl', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Colesterol LDL', 'colesterol ldl', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Triglicéridos', 'trigliceridos', 'Química sanguínea', 'Sangre', 'Ayuno de 12 horas. No ingerir alcohol las 24 horas previas.'),
+        ('Proteínas totales y fraccionadas', 'proteinas totales y fraccionadas', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Bilirrubina total y fraccionada', 'bilirrubina total y fraccionada', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('TGO (AST)', 'tgo (ast)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('TGP (ALT)', 'tgp (alt)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Fosfatasa alcalina', 'fosfatasa alcalina', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Gamma glutamil transferasa (GGT)', 'gamma glutamil transferasa (ggt)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Amilasa', 'amilasa', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Lipasa', 'lipasa', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Electrolitos (sodio, potasio, cloro)', 'electrolitos (sodio, potasio, cloro)', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Calcio sérico', 'calcio serico', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Magnesio', 'magnesio', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Fósforo', 'fosforo', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Hierro sérico', 'hierro serico', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Ferritina', 'ferritina', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Transferrina', 'transferrina', 'Química sanguínea', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('TSH', 'tsh', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('T3 total', 't3 total', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('T4 libre', 't4 libre', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Anticuerpos anti-TPO', 'anticuerpos anti-tpo', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Insulina basal', 'insulina basal', 'Hormonas', 'Sangre', 'Ayuno de 8 a 12 horas.'),
+        ('Cortisol matutino', 'cortisol matutino', 'Hormonas', 'Sangre', 'Tomar la muestra entre las 7 y las 9 de la mañana.'),
+        ('Prolactina', 'prolactina', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('FSH', 'fsh', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('LH', 'lh', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Estradiol', 'estradiol', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Progesterona', 'progesterona', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Testosterona total', 'testosterona total', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Testosterona libre', 'testosterona libre', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Beta-HCG cuantitativa', 'beta-hcg cuantitativa', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Vitamina D (25-OH)', 'vitamina d (25-oh)', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Vitamina B12', 'vitamina b12', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Ácido fólico', 'acido folico', 'Hormonas', 'Sangre', 'No requiere ayuno.'),
+        ('Examen de orina (uroanálisis)', 'examen de orina (uroanalisis)', 'Orina y heces', 'Orina', 'Primera orina de la mañana, chorro medio, previo aseo genital.'),
+        ('Urocultivo con antibiograma', 'urocultivo con antibiograma', 'Orina y heces', 'Orina', 'Muestra tomada antes de iniciar antibióticos.'),
+        ('Examen de heces', 'examen de heces', 'Orina y heces', 'Heces', NULL),
+        ('Coprocultivo', 'coprocultivo', 'Orina y heces', 'Heces', 'Muestra tomada antes de iniciar antibióticos.'),
+        ('Sangre oculta en heces', 'sangre oculta en heces', 'Orina y heces', 'Heces', NULL),
+        ('VDRL', 'vdrl', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('VIH (ELISA)', 'vih (elisa)', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Antígeno de superficie de hepatitis B (HBsAg)', 'antigeno de superficie de hepatitis b (hbsag)', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Anticuerpos anti-hepatitis C', 'anticuerpos anti-hepatitis c', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Toxoplasma IgG e IgM', 'toxoplasma igg e igm', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Rubéola IgG e IgM', 'rubeola igg e igm', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Proteína C reactiva (PCR)', 'proteina c reactiva (pcr)', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Factor reumatoide', 'factor reumatoide', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('ASTO', 'asto', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Anticuerpos antinucleares (ANA)', 'anticuerpos antinucleares (ana)', 'Inmunología y serología', 'Sangre', 'No requiere ayuno.'),
+        ('Antígeno prostático específico (PSA) total', 'antigeno prostatico especifico (psa) total', 'Marcadores', 'Sangre', NULL),
+        ('PSA libre', 'psa libre', 'Marcadores', 'Sangre', NULL),
+        ('Electrocardiograma', 'electrocardiograma', 'Estudios', NULL, NULL),
+        ('Radiografía de tórax PA y lateral', 'radiografia de torax pa y lateral', 'Estudios', NULL, NULL),
+        ('Ecosonograma abdominal', 'ecosonograma abdominal', 'Estudios', NULL, 'Ayuno de 8 a 12 horas.'),
+        ('Ecosonograma pélvico', 'ecosonograma pelvico', 'Estudios', NULL, 'Vejiga llena: tomar un litro de agua una hora antes y no orinar.'),
+        ('Ecosonograma mamario', 'ecosonograma mamario', 'Estudios', NULL, NULL),
+        ('Mamografía', 'mamografia', 'Estudios', NULL, 'Sin desodorante, talco ni cremas en axilas ni mamas el día del estudio.'),
+        ('Citología cervical (Papanicolau)', 'citologia cervical (papanicolau)', 'Estudios', NULL, 'No tener relaciones ni usar óvulos las 48 horas previas. Fuera del período menstrual.'),
+        ('Densitometría ósea', 'densitometria osea', 'Estudios', NULL, NULL)
+      );
+
+    ---------------------------------------------------- mapa de infiltraciones
+    CREATE TABLE IF NOT EXISTS infiltraciones (
+        id             INTEGER PRIMARY KEY,
+        codigo         TEXT    NOT NULL,   -- el del PACIENTE
+        paciente_id    INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE RESTRICT,
+        consulta_id    INTEGER REFERENCES consultas(id) ON DELETE SET NULL,
+        fecha          TEXT    NOT NULL,   -- ISO aaaa-mm-dd
+        vista          TEXT    NOT NULL,   -- 'mujer-frontal' | 'hombre-frontal'
+        calibracion    TEXT,               -- JSON {pupilaIzq,pupilaDer,menton}
+        productos      TEXT    NOT NULL DEFAULT '[]',   -- JSON
+        puntos         TEXT    NOT NULL DEFAULT '[]',   -- JSON
+        observaciones  TEXT,
+        ruta_pdf       TEXT,
+        anulado        INTEGER NOT NULL DEFAULT 0 CHECK (anulado IN (0, 1)),
+        motivo_anulacion TEXT,
+        fecha_anulacion  TEXT,
+        creado_en      TEXT    NOT NULL,
+        actualizado_en TEXT    NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_infiltraciones_fecha    ON infiltraciones(fecha DESC);
+    CREATE INDEX IF NOT EXISTS ix_infiltraciones_paciente ON infiltraciones(paciente_id);
+    """,
 ]
 
 #: Versión de esquema que espera este código.
@@ -1156,6 +1369,151 @@ def obtener_o_crear_indicacion(con: sqlite3.Connection, texto: str) -> int:
 
 def obtener_o_crear_diagnostico(con: sqlite3.Connection, texto: str) -> int:
     return obtener_o_crear_termino(con, "diagnosticos", texto)
+
+
+# --------------------------------------------------------------------------
+# Catálogo de análisis (2.1, contrato §2)
+#
+# Es una tabla de términos como las de arriba, pero además viene sembrada y
+# lleva grupo, muestra y preparación. Esas tres columnas son lo único que
+# justifica las funciones propias: el resto lo resuelven `buscar_terminos` y
+# `registrar_uso_termino` sin enterarse.
+# --------------------------------------------------------------------------
+
+def buscar_analisis(
+    con: sqlite3.Connection, termino: str | None = "", limite: int = LIMITE_SUGERENCIAS
+) -> list[sqlite3.Row]:
+    """Autocompletado del campo Análisis. Trae también grupo, muestra y preparación.
+
+    La interfaz las copia al renglón al elegir del catálogo, pero las deja
+    editables: el catálogo es una posición de partida y el que manda es el
+    médico (contrato §0.6 y §2).
+    """
+    return buscar_terminos(con, "analisis", termino, limite)
+
+
+def listar_analisis_por_grupo(con: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Todo el catálogo en el orden en que el médico lo lee.
+
+    Es la vía rápida de la pestaña Exámenes: el panel de casillas para tildar
+    varios análisis de una. La pantalla pinta este resultado tal cual, así que
+    **el orden que sale de acá es el orden que él ve**, y por eso los grupos van
+    en el orden clínico de `ORDEN_GRUPOS_ANALISIS` y no alfabético: alfabético
+    le pondría Estudios y Hormonas antes que Hematología, que es donde de verdad
+    empieza a mirar.
+
+    Va entero y sin tope porque son unas decenas de filas y la pantalla las
+    agrupa ella misma; pedirlas de a página sería complicar algo que entra en
+    una consulta.
+
+    El `CASE` se arma desde la constante y los nombres viajan como parámetros:
+    el orden vive en un solo lugar y no puede desincronizarse de lo que se
+    sembró. Un grupo que no esté en la tupla —los que el médico agregue algún
+    día— cae al final, alfabético entre ellos, y los que no tienen grupo al
+    final del todo: son suyos y conviene que se vean como un bloque aparte del
+    catálogo de fábrica.
+
+    Dentro de cada grupo el orden es por texto, comparado sobre `texto_norm`
+    para que "Ácido úrico" caiga en la A y no después de la Z, que es lo que
+    haría SQLite comparando los acentos byte a byte.
+    """
+    casos = " ".join(
+        f"WHEN grupo = ? THEN {posicion}"
+        for posicion in range(len(ORDEN_GRUPOS_ANALISIS))
+    )
+    desconocido = len(ORDEN_GRUPOS_ANALISIS)
+    return list(con.execute(
+        f"""
+        SELECT * FROM analisis
+         ORDER BY CASE
+                    WHEN IFNULL(grupo, '') = '' THEN {desconocido + 1}
+                    {casos}
+                    ELSE {desconocido}
+                  END ASC,
+                  grupo ASC, texto_norm ASC
+        """,
+        ORDEN_GRUPOS_ANALISIS,
+    ))
+
+
+def obtener_o_crear_analisis(
+    con: sqlite3.Connection,
+    texto: str,
+    grupo: str | None = None,
+    muestra: str | None = None,
+    preparacion: str | None = None,
+) -> int:
+    """Id del análisis, creándolo si el médico escribió uno que no estaba.
+
+    Si ya existe **no se le pisa nada**: como mucho se le completan los huecos,
+    y ni eso cuando la fila es de fábrica. La razón es que el catálogo sembrado
+    dice qué muestra y qué preparación corresponden, y una orden donde el médico
+    dejó la preparación en blanco no es una corrección del catálogo: es una
+    orden donde no hacía falta imprimirla.
+    """
+    texto = limpiar(texto)
+    if not texto:
+        raise ValueError("El análisis necesita un texto.")
+    norm = normalizar(texto)
+    fila = con.execute("SELECT * FROM analisis WHERE texto_norm = ?", (norm,)).fetchone()
+    if fila is not None:
+        if not fila["de_fabrica"]:
+            faltantes = {
+                columna: limpiar(valor)
+                for columna, valor in (
+                    ("grupo", grupo), ("muestra", muestra), ("preparacion", preparacion),
+                )
+                if limpiar(valor) and not limpiar(fila[columna])
+            }
+            if faltantes:
+                asignaciones = ", ".join(f"{c} = ?" for c in faltantes)
+                con.execute(
+                    f"UPDATE analisis SET {asignaciones}, actualizado_en = ? WHERE id = ?",
+                    [*faltantes.values(), ahora_iso(), int(fila["id"])],
+                )
+        return int(fila["id"])
+    momento = ahora_iso()
+    cur = con.execute(
+        """
+        INSERT INTO analisis (texto, texto_norm, grupo, muestra, preparacion,
+                              de_fabrica, veces_usado, ultima_vez,
+                              creado_en, actualizado_en)
+        VALUES (?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
+        """,
+        (
+            texto, norm, limpiar(grupo) or None, limpiar(muestra) or None,
+            limpiar(preparacion) or None, momento, momento,
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def aprender_analisis(
+    con: sqlite3.Connection,
+    items: Iterable[dict[str, Any]] | None,
+    cuando: str | None = None,
+) -> None:
+    """Aprende los análisis de una orden y les suma un uso.
+
+    `items` son los renglones tal como viajan a la orden y al PDF: `examen`,
+    `muestra` e `indicaciones`. El nombre `indicaciones` viene del renglón —es
+    lo que el paciente lee— y acá se guarda como `preparacion`, que es como se
+    llama en el catálogo.
+
+    Espejo de `aprender_terminos`: se espera estar dentro de la transacción del
+    guardado, para que la orden y lo aprendido caigan o queden juntos.
+    """
+    momento = cuando or ahora_iso()
+    for item in items or ():
+        texto = limpiar(item.get("examen"))
+        if not texto:
+            continue
+        analisis_id = obtener_o_crear_analisis(
+            con, texto,
+            muestra=item.get("muestra"),
+            preparacion=item.get("indicaciones"),
+        )
+        registrar_uso_termino(con, "analisis", analisis_id, momento)
 
 
 # --------------------------------------------------------------------------
@@ -2060,6 +2418,517 @@ def anexos_por_informe(
     ):
         cuenta[int(fila["informe_id"])] = int(fila["cuantos"])
     return cuenta
+
+
+# --------------------------------------------------------------------------
+# Órdenes de exámenes (2.1, contrato §1 y §5)
+#
+# Se manejan como los récipes y por la misma razón: son un documento emitido.
+# Copia literal de los textos en `examen_items`, `codigo` del paciente copiado
+# al emitir, y anulación con motivo en vez de borrado.
+# --------------------------------------------------------------------------
+
+#: Las tres claves de un renglón de la orden, tal como viajan al PDF (§3).
+_CLAVES_ITEM_EXAMEN = ("examen", "muestra", "indicaciones")
+
+
+def _limpiar_items_examen(
+    items: Iterable[dict[str, Any]] | None
+) -> list[dict[str, str]]:
+    """Normaliza los renglones y tira los que no nombran un análisis.
+
+    El formulario arranca con renglones vacíos, igual que el del récipe: los
+    que el médico no llenó no son un error.
+    """
+    limpios: list[dict[str, str]] = []
+    for item in items or ():
+        renglon = {clave: limpiar(item.get(clave)) for clave in _CLAVES_ITEM_EXAMEN}
+        if renglon["examen"]:
+            limpios.append(renglon)
+    return limpios
+
+
+def insertar_examen_item(
+    con: sqlite3.Connection,
+    examen_id: int,
+    orden: int,
+    examen: str,
+    muestra: str | None = None,
+    indicaciones: str | None = None,
+) -> int:
+    """Guarda un renglón con copia literal de los textos, sin referencias (§5).
+
+    `muestra` e `indicaciones` quedan en NULL cuando vienen vacías: un análisis
+    sin preparación se imprime igual, solo con su nombre (contrato §3), y no es
+    lo mismo "no lleva preparación" que "preparación en blanco".
+
+    El renglón no lleva marca de tiempo propia —a diferencia de `recipe_items`—
+    porque nace y muere con su orden: la de `examenes` ya dice todo.
+    """
+    cur = con.execute(
+        """
+        INSERT INTO examen_items (examen_id, orden, examen, muestra, indicaciones)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            examen_id, orden, limpiar(examen),
+            limpiar(muestra) or None, limpiar(indicaciones) or None,
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def crear_examen(
+    con: sqlite3.Connection,
+    paciente_id: int,
+    codigo: str | None,
+    items: Iterable[dict[str, Any]],
+    *,
+    fecha_emision: Any = None,
+    diagnostico: str | None = None,
+    notas: str | None = None,
+    indicaciones_generales: str | None = None,
+    consulta_id: int | None = None,
+) -> int:
+    """Guarda una orden de exámenes con sus renglones y devuelve su id.
+
+    Todo pasa en **una sola transacción**, igual que `codigos.crear_recipe`: si
+    falla el renglón tercero no queda una orden a medias que el médico vería
+    impresa incompleta. Se aprovecha `transaccion_si_hace_falta` para que
+    `rutas.py` pueda meter esto dentro de la transacción más grande del guardado
+    (alta del paciente + código + orden + aprendizaje), que es de donde sale la
+    atomicidad de §6.3.
+
+    `codigo` es el del paciente y se copia literal; si llega vacío se resuelve
+    —y se le asigna, si todavía no tenía— con `codigos.asegurar_codigo_paciente`,
+    porque una orden impresa sin código no le sirve a nadie.
+
+    No aprende nada: eso es `aprender_analisis`, que quien guarda llama en la
+    misma transacción. Separarlos es lo que permite reimprimir o restaurar una
+    orden sin inflarle las estadísticas al catálogo.
+    """
+    renglones = _limpiar_items_examen(items)
+    if not renglones:
+        raise ValueError("La orden de exámenes necesita al menos un análisis.")
+
+    fecha = _fecha(fecha_emision)
+    diagnostico = limpiar(diagnostico)
+    notas = limpiar(notas)
+    # Multilínea: cada renglón es una instrucción aparte, como en el récipe.
+    indicaciones_generales = limpiar_multilinea(indicaciones_generales)
+
+    with transaccion_si_hace_falta(con):
+        codigo = limpiar(codigo)
+        if not codigo:
+            codigo = _codigos().asegurar_codigo_paciente(con, paciente_id)
+        momento = ahora_iso()
+        cur = con.execute(
+            """
+            INSERT INTO examenes (codigo, paciente_id, consulta_id, fecha_emision,
+                                  diagnostico, indicaciones_generales, notas,
+                                  ruta_pdf, anulado, motivo_anulacion, fecha_anulacion,
+                                  creado_en, actualizado_en)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?)
+            """,
+            (
+                codigo, paciente_id, consulta_id, fecha,
+                diagnostico or None, indicaciones_generales or None, notas or None,
+                momento, momento,
+            ),
+        )
+        examen_id = int(cur.lastrowid)
+        for orden, renglon in enumerate(renglones, start=1):
+            insertar_examen_item(
+                con, examen_id, orden,
+                examen=renglon["examen"],
+                muestra=renglon["muestra"],
+                indicaciones=renglon["indicaciones"],
+            )
+        return examen_id
+
+
+def obtener_examen(con: sqlite3.Connection, examen_id: int) -> sqlite3.Row | None:
+    return con.execute("SELECT * FROM examenes WHERE id = ?", (examen_id,)).fetchone()
+
+
+def obtener_examen_completo(con: sqlite3.Connection, examen_id: int) -> sqlite3.Row | None:
+    """La orden con el nombre y el código del paciente, como en `buscar_examenes`.
+
+    Es lo que hace falta para reimprimir el PDF o para devolver la orden recién
+    anulada con la misma forma que las filas del historial, sin que quien llama
+    tenga que armar el JOIN.
+    """
+    return con.execute(
+        """
+        SELECT e.*, p.nombre AS paciente_nombre, p.codigo AS paciente_codigo,
+               p.cedula AS paciente_cedula, p.edad AS paciente_edad,
+               (SELECT COUNT(*) FROM examen_items ei WHERE ei.examen_id = e.id)
+                   AS cantidad_items
+          FROM examenes e
+          JOIN pacientes p ON p.id = e.paciente_id
+         WHERE e.id = ?
+        """,
+        (examen_id,),
+    ).fetchone()
+
+
+def obtener_items_examen(con: sqlite3.Connection, examen_id: int) -> list[sqlite3.Row]:
+    """Los renglones en el orden en que se pidieron: el PDF numera por ahí."""
+    return list(con.execute(
+        "SELECT * FROM examen_items WHERE examen_id = ? ORDER BY orden ASC, id ASC",
+        (examen_id,),
+    ))
+
+
+def listar_examenes_de_paciente(
+    con: sqlite3.Connection,
+    paciente_id: int,
+    limite: int = 200,
+    incluir_anulados: bool = True,
+) -> list[sqlite3.Row]:
+    """Las órdenes de un paciente, de la más nueva a la más vieja.
+
+    Las anuladas vienen por defecto porque en la historia clínica se muestran
+    tachadas: que una orden se haya anulado es parte de lo que pasó.
+
+    Devuelve **las mismas columnas que `buscar_examenes`** —el paciente y la
+    cuenta de análisis incluidos—, y no un `SELECT *` pelado. La razón es que
+    las dos consultas alimentan al mismo `_json_examen` de `rutas.py`: con el
+    `SELECT *`, `cantidad_items` salía 0 y el nombre del paciente vacío en todo
+    lo que se pintaba desde acá, sin fallar en ningún lado. Un contrato que se
+    cumple en una consulta y en la otra no es un contrato que miente.
+    """
+    condicion = "" if incluir_anulados else "AND e.anulado = 0"
+    return list(con.execute(
+        f"""
+        SELECT e.*, p.nombre AS paciente_nombre, p.codigo AS paciente_codigo,
+               p.cedula AS paciente_cedula, p.edad AS paciente_edad,
+               (SELECT COUNT(*) FROM examen_items ei WHERE ei.examen_id = e.id)
+                   AS cantidad_items
+          FROM examenes e
+          JOIN pacientes p ON p.id = e.paciente_id
+         WHERE e.paciente_id = ? {condicion}
+         ORDER BY e.fecha_emision DESC, e.id DESC LIMIT ?
+        """,
+        (paciente_id, limite),
+    ))
+
+
+def buscar_examenes(
+    con: sqlite3.Connection,
+    termino: str | None = None,
+    desde: str | None = None,
+    hasta: str | None = None,
+    limite: int = 200,
+) -> list[sqlite3.Row]:
+    """Historial de órdenes: mismo criterio que `buscar_recipes`.
+
+    Se busca por código, paciente o **nombre del análisis**, sin acentos y por
+    subcadena, y se acota por rango de fechas ISO inclusive. El análisis se
+    compara contra el texto literal de `examen_items`, que es lo que se pidió
+    ese día y no lo que hoy diga el catálogo (§5).
+    """
+    condiciones: list[str] = []
+    parametros: list[Any] = []
+
+    if normalizar(termino):
+        patron = _patron_like(termino)
+        condiciones.append(
+            """(norm(e.codigo) LIKE ? ESCAPE '\\'
+                OR p.nombre_norm LIKE ? ESCAPE '\\'
+                OR IFNULL(p.cedula, '') LIKE ? ESCAPE '\\'
+                OR EXISTS (SELECT 1 FROM examen_items ei
+                            WHERE ei.examen_id = e.id
+                              AND norm(ei.examen) LIKE ? ESCAPE '\\'))"""
+        )
+        parametros.extend([patron, patron, patron, patron])
+    if desde:
+        condiciones.append("DATE(e.fecha_emision) >= DATE(?)")
+        parametros.append(desde)
+    if hasta:
+        condiciones.append("DATE(e.fecha_emision) <= DATE(?)")
+        parametros.append(hasta)
+
+    donde = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    parametros.append(limite)
+    return list(con.execute(
+        f"""
+        SELECT e.*, p.nombre AS paciente_nombre, p.codigo AS paciente_codigo,
+               p.cedula AS paciente_cedula, p.edad AS paciente_edad,
+               (SELECT COUNT(*) FROM examen_items ei WHERE ei.examen_id = e.id)
+                   AS cantidad_items
+          FROM examenes e
+          JOIN pacientes p ON p.id = e.paciente_id
+          {donde}
+         ORDER BY e.fecha_emision DESC, e.id DESC
+         LIMIT ?
+        """,
+        parametros,
+    ))
+
+
+def analisis_por_examen(
+    con: sqlite3.Connection, examen_ids: Sequence[int]
+) -> dict[int, list[str]]:
+    """Los análisis de cada orden, en el orden en que se pidieron.
+
+    Es el resumen del historial —"Hematología completa, Glicemia en ayunas" al
+    lado del código— resuelto en una sola consulta para las 200 filas que trae
+    la búsqueda, en vez de una por renglón. Mismo criterio que
+    `medicamentos_por_recipe`, y por la misma razón se lee el texto literal.
+    """
+    ids = [int(i) for i in examen_ids]
+    if not ids:
+        return {}
+    marcadores = ",".join("?" * len(ids))
+    por_examen: dict[int, list[str]] = {i: [] for i in ids}
+    for fila in con.execute(
+        f"""
+        SELECT examen_id, examen
+          FROM examen_items
+         WHERE examen_id IN ({marcadores})
+         ORDER BY examen_id ASC, orden ASC
+        """,
+        ids,
+    ):
+        por_examen[int(fila["examen_id"])].append(fila["examen"])
+    return por_examen
+
+
+def guardar_ruta_pdf_examen(con: sqlite3.Connection, examen_id: int, ruta_pdf: str) -> None:
+    con.execute(
+        "UPDATE examenes SET ruta_pdf = ?, actualizado_en = ? WHERE id = ?",
+        (str(ruta_pdf), ahora_iso(), examen_id),
+    )
+
+
+def anular_examen(
+    con: sqlite3.Connection, examen_id: int, motivo: str, cuando: str | None = None
+) -> None:
+    """Como los récipes: se anula con motivo escrito, nunca se borra (§2.4)."""
+    motivo = limpiar(motivo)
+    if not motivo:
+        raise ValueError("La anulación exige un motivo escrito.")
+    momento = cuando or ahora_iso()
+    cur = con.execute(
+        """
+        UPDATE examenes
+           SET anulado = 1, motivo_anulacion = ?, fecha_anulacion = ?, actualizado_en = ?
+         WHERE id = ? AND anulado = 0
+        """,
+        (motivo, momento, momento, examen_id),
+    )
+    if cur.rowcount == 0:
+        raise ValueError("La orden de exámenes no existe o ya estaba anulada.")
+
+
+# --------------------------------------------------------------------------
+# Mapa de infiltraciones (2.1, contrato §1 y §5)
+#
+# Calibración, productos y puntos viajan como JSON en una columna cada uno. No
+# es pereza: una sesión de mapeo es un documento entero —dónde se pinchó, con
+# qué y cuánto— que se guarda y se reabre completo, y del que nunca se pregunta
+# "qué pacientes tienen un punto en la glabela". Normalizarlo en tablas sería
+# pagar un JOIN por cada lectura para una consulta que nadie hace.
+# --------------------------------------------------------------------------
+
+#: Columnas que `actualizar_infiltracion` deja corregir, con cómo se limpian.
+_CAMPOS_INFILTRACION: dict[str, str] = {
+    "consulta_id": "id", "fecha": "fecha", "vista": "texto",
+    "calibracion": "json", "productos": "json", "puntos": "json",
+    "observaciones": "multilinea", "codigo": "texto",
+}
+
+
+def _json_texto(valor: Any, vacio: str) -> str:
+    """Serializa a JSON sin escapar los acentos, o devuelve el vacío que toca.
+
+    `ensure_ascii=False` para que el archivo se pueda leer con un editor si
+    alguna vez hay que recuperar una sesión a mano. Un texto que ya viene
+    serializado se guarda tal cual: es lo que manda la interfaz.
+    """
+    if valor is None or valor == "":
+        return vacio
+    if isinstance(valor, str):
+        return valor
+    return json.dumps(valor, ensure_ascii=False)
+
+
+def _json_valor(bruto: Any, vacio: Any) -> Any:
+    """Parsea una columna JSON. Si está corrupta devuelve el vacío que toca.
+
+    Reventar acá sería lo peor que puede pasar: dejaría al médico sin poder
+    abrir la historia del paciente por una fila rota. Se prefiere una sesión
+    que se ve vacía —y que él puede rehacer— a una pantalla que no carga.
+    """
+    if bruto in (None, ""):
+        return vacio
+    try:
+        valor = json.loads(bruto)
+    except (TypeError, ValueError):
+        return vacio
+    return valor if isinstance(valor, type(vacio)) else vacio
+
+
+def crear_infiltracion(
+    con: sqlite3.Connection,
+    paciente_id: int,
+    codigo: str | None,
+    *,
+    vista: str,
+    fecha: Any = None,
+    calibracion: Any = None,
+    productos: Any = (),
+    puntos: Any = (),
+    observaciones: str | None = None,
+    consulta_id: int | None = None,
+) -> int:
+    """Guarda una sesión de mapeo y devuelve su id.
+
+    `vista` es obligatoria y va por nombre: es la lámina sobre la que se
+    dibujaron los puntos, y sin ella las coordenadas normalizadas no significan
+    nada. `codigo` es el del paciente, copiado literal como en el récipe; vacío
+    se resuelve con `codigos.asegurar_codigo_paciente`.
+    """
+    vista = limpiar(vista)
+    if not vista:
+        raise ValueError("La infiltración necesita saber sobre qué lámina se marcó.")
+    with transaccion_si_hace_falta(con):
+        codigo = limpiar(codigo)
+        if not codigo:
+            codigo = _codigos().asegurar_codigo_paciente(con, paciente_id)
+        momento = ahora_iso()
+        cur = con.execute(
+            """
+            INSERT INTO infiltraciones (codigo, paciente_id, consulta_id, fecha, vista,
+                                        calibracion, productos, puntos, observaciones,
+                                        ruta_pdf, anulado, motivo_anulacion,
+                                        fecha_anulacion, creado_en, actualizado_en)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?)
+            """,
+            (
+                codigo, paciente_id, consulta_id, _fecha(fecha), vista,
+                _json_texto(calibracion, "") or None,
+                _json_texto(productos, "[]"),
+                _json_texto(puntos, "[]"),
+                limpiar_multilinea(observaciones) or None,
+                momento, momento,
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def actualizar_infiltracion(
+    con: sqlite3.Connection, infiltracion_id: int, **campos: Any
+) -> None:
+    """Corrige los campos pasados. Lo que no llega no se toca.
+
+    La sesión se reabre y se corrige —a diferencia del récipe, que es un
+    documento cerrado— porque el mapa es el registro de lo que se hizo y el
+    médico completa dosis y lotes después de infiltrar. El PDF se regenera
+    entero cuando eso pasa (contrato §5).
+    """
+    asignaciones: list[str] = []
+    valores: list[Any] = []
+    for clave, bruto in campos.items():
+        if clave not in _CAMPOS_INFILTRACION:
+            raise ValueError(f"infiltraciones: no existe el campo {clave!r}.")
+        tipo = _CAMPOS_INFILTRACION[clave]
+        if tipo == "json":
+            valor: Any = _json_texto(bruto, "" if clave == "calibracion" else "[]")
+            if clave == "calibracion" and not valor:
+                valor = None
+        elif tipo == "fecha":
+            valor = _fecha(bruto)
+        elif tipo == "multilinea":
+            valor = limpiar_multilinea(bruto) or None
+        elif tipo == "id":
+            valor = int(bruto) if bruto not in (None, "") else None
+        else:
+            valor = limpiar(bruto) or None
+        asignaciones.append(f"{clave} = ?")
+        valores.append(valor)
+    if not asignaciones:
+        return
+    asignaciones.append("actualizado_en = ?")
+    valores.extend([ahora_iso(), infiltracion_id])
+    con.execute(
+        f"UPDATE infiltraciones SET {', '.join(asignaciones)} WHERE id = ?", valores
+    )
+
+
+def obtener_infiltracion(con: sqlite3.Connection, infiltracion_id: int) -> sqlite3.Row | None:
+    return con.execute(
+        "SELECT * FROM infiltraciones WHERE id = ?", (infiltracion_id,)
+    ).fetchone()
+
+
+def listar_infiltraciones(
+    con: sqlite3.Connection,
+    paciente_id: int,
+    limite: int = 200,
+    incluir_anuladas: bool = True,
+) -> list[sqlite3.Row]:
+    """Las sesiones del paciente, de la más nueva a la más vieja.
+
+    Es la lista desde la que se reabre una sesión para compararla con la de
+    hoy, que es como se decide la próxima infiltración.
+    """
+    condicion = "" if incluir_anuladas else "AND anulado = 0"
+    return list(con.execute(
+        f"""
+        SELECT * FROM infiltraciones WHERE paciente_id = ? {condicion}
+         ORDER BY fecha DESC, id DESC LIMIT ?
+        """,
+        (paciente_id, limite),
+    ))
+
+
+def infiltracion_a_dict(fila: sqlite3.Row | None) -> dict[str, Any]:
+    """La fila con sus tres columnas JSON ya parseadas, lista para el JSON de salida.
+
+    Es el único lugar donde se traduce entre cómo se guarda (texto) y cómo se
+    usa (dict y listas), justamente para que nadie más tenga que acordarse. Una
+    columna corrupta no interrumpe: devuelve el vacío que corresponda, porque
+    dejar al médico sin abrir la historia por una fila rota sería peor que
+    mostrarle una sesión que tiene que rehacer.
+    """
+    if fila is None:
+        return {}
+    datos = dict(fila)
+    datos["calibracion"] = _json_valor(datos.get("calibracion"), {})
+    datos["productos"] = _json_valor(datos.get("productos"), [])
+    datos["puntos"] = _json_valor(datos.get("puntos"), [])
+    return datos
+
+
+def guardar_ruta_pdf_infiltracion(
+    con: sqlite3.Connection, infiltracion_id: int, ruta_pdf: str
+) -> None:
+    con.execute(
+        "UPDATE infiltraciones SET ruta_pdf = ?, actualizado_en = ? WHERE id = ?",
+        (str(ruta_pdf), ahora_iso(), infiltracion_id),
+    )
+
+
+def anular_infiltracion(
+    con: sqlite3.Connection, infiltracion_id: int, motivo: str, cuando: str | None = None
+) -> None:
+    """Como los récipes y los informes: con motivo escrito y sin borrar (§2.4)."""
+    motivo = limpiar(motivo)
+    if not motivo:
+        raise ValueError("La anulación exige un motivo escrito.")
+    momento = cuando or ahora_iso()
+    cur = con.execute(
+        """
+        UPDATE infiltraciones
+           SET anulado = 1, motivo_anulacion = ?, fecha_anulacion = ?, actualizado_en = ?
+         WHERE id = ? AND anulado = 0
+        """,
+        (motivo, momento, momento, infiltracion_id),
+    )
+    if cur.rowcount == 0:
+        raise ValueError("El registro de infiltraciones no existe o ya estaba anulado.")
 
 
 # --------------------------------------------------------------------------

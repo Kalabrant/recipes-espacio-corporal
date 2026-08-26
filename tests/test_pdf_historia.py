@@ -12,6 +12,10 @@ Lo que fija esta suite:
   - Se respeta lo que el médico tachó en `referencias/Historia clínica.pdf`:
     no aparecen "heredo", ni el interrogatorio por aparatos, ni la exploración
     física por regiones, ni los campos de hospital.
+  - Las **órdenes de exámenes** y los **registros de infiltraciones** de la 2.1
+    (§7 del contrato) se listan al final, con su fecha, los anulados marcados
+    y los totales que dice el PDF del registro. Sin ninguno, ni el título sale
+    y la historia sigue midiendo lo mismo que antes de la 2.1.
 
 Se espía `_texto()`, igual que en `test_pdf_recipe.py`, anotando la página.
 Solo `unittest` de la stdlib (§3).
@@ -34,6 +38,7 @@ sys.path.insert(0, str(RAIZ / "app"))
 
 import pdf_comun  # noqa: E402
 import pdf_historia  # noqa: E402
+import pdf_infiltraciones  # noqa: E402
 
 PACIENTE = {
     "nombre": "María Fernanda Rodríguez Blanco",
@@ -86,6 +91,54 @@ DATOS = {
     "historia": HISTORIA,
     "consultas": CONSULTAS,
 }
+
+#: Las órdenes tal como las arma `rutas.py` para el PDF: la fila de `examenes`
+#: más la lista de análisis de `basedatos.analisis_por_examen`. La primera
+#: tiene seis análisis a propósito —dos más que `MAX_ANALISIS_LISTADOS`—, y la
+#: tercera está anulada: en la historia se marca, no se esconde.
+EXAMENES = [
+    {"id": 12, "fecha_emision": "2026-08-14", "anulado": 0, "analisis": [
+        "Hematología completa", "Glicemia en ayunas",
+        "Perfil lipídico completo", "TSH", "Creatinina", "Urea"]},
+    {"id": 9, "fecha_emision": "2026-05-09", "anulado": 0,
+     "analisis": ["Examen de orina (uroanálisis)"]},
+    {"id": 7, "fecha_emision": "2026-04-02", "anulado": 1,
+     "motivo_anulacion": "Se pidió el perfil equivocado.",
+     "analisis": ["Amilasa", "Lipasa"]},
+]
+
+PRODUCTOS = [
+    {"id": "p1", "nombre": "Toxina A — marca 1", "tipo": "toxina",
+     "unidad": "U", "color": "#D92B2B"},
+    {"id": "p2", "nombre": "Ácido hialurónico", "tipo": "relleno",
+     "unidad": "ml", "color": "#157F6F"},
+]
+
+#: Cinco puntos, y el último **sin dosis**: se registró pero no suma. Es el
+#: caso que separa "cuántos puntos" de "cuánto producto", y el que obliga a
+#: que el total salga de `pdf_infiltraciones.totales_por_producto` y no de una
+#: cuenta propia de este módulo.
+PUNTOS = [
+    {"orden": 1, "x": 0.42, "y": 0.23, "lado": "I",
+     "zona": "Frontal — línea media medial", "productoId": "p1", "dosis": 4},
+    {"orden": 2, "x": 0.58, "y": 0.23, "lado": "D",
+     "zona": "Frontal — línea media medial", "productoId": "p1", "dosis": 4},
+    {"orden": 3, "x": 0.50, "y": 0.31, "lado": "C",
+     "zona": "Glabela — prócer", "productoId": "p1", "dosis": 6},
+    {"orden": 4, "x": 0.38, "y": 0.55, "lado": "I",
+     "zona": "Surco nasogeniano", "productoId": "p2", "dosis": 0.5},
+    {"orden": 5, "x": 0.62, "y": 0.55, "lado": "D",
+     "zona": "Surco nasogeniano", "productoId": "p2", "dosis": 0},
+]
+
+#: Lo que devuelve `basedatos.infiltracion_a_dict`: las columnas JSON ya
+#: parseadas.
+INFILTRACIONES = [
+    {"id": 4, "fecha": "2026-07-18", "vista": "mujer-frontal", "anulado": 0,
+     "productos": PRODUCTOS, "puntos": PUNTOS, "observaciones": ""},
+]
+
+DATOS_2_1 = dict(DATOS, examenes=EXAMENES, infiltraciones=INFILTRACIONES)
 
 #: Fechas separadas a propósito de forma **irregular** (36, 79, 41 y 31 días):
 #: es lo que permite comprobar que el eje X se reparte en proporción al tiempo
@@ -186,6 +239,30 @@ class BaseHistoriaPDF(unittest.TestCase):
         encontrados = self.renglones(contiene)
         self.assertTrue(encontrados, f"no se imprimió «{contiene}»")
         return encontrados[0][0], encontrados[0][2]
+
+    # -- documentos emitidos (contrato 2.1 §7) ------------------------------
+    def asiento(self, fecha: str) -> str:
+        """El renglón entero de un documento emitido: su fecha y su resumen.
+
+        Un asiento se escribe con `pdf_comun.campo`: el rótulo en negrita y el
+        valor en redonda, que puede seguir en la línea de abajo. Se junta todo
+        desde el rótulo hasta el próximo trazo en negrita —el asiento
+        siguiente o el título de la sección que venga— sin salirse de la hoja
+        ni saltar más de una interlínea, que es lo que deja afuera el pie.
+        """
+        rotulo = f"{fecha}:"
+        indices = [i for i, t in enumerate(self.doc.trazos) if t[3] == rotulo]
+        self.assertEqual(1, len(indices), f"asiento «{rotulo}»")
+        pagina, _, y, *_ = self.doc.trazos[indices[0]]
+        partes = [rotulo]
+        for trazo in self.doc.trazos[indices[0] + 1:]:
+            if trazo[4] == "B" or trazo[0] != pagina:
+                break
+            if not y <= trazo[2] <= y + pdf_comun.INTERLINEA_MM * 1.2:
+                break
+            y = trazo[2]
+            partes.append(trazo[3])
+        return " ".join(partes)
 
     # -- mini-gráficos -----------------------------------------------------
     @property
@@ -623,6 +700,252 @@ class GraficosEnUnaHistoriaLarga(BaseHistoriaPDF):
     def test_el_membrete_sigue_en_todas_las_paginas(self):
         paginas = {t[0] for t in self.doc.trazos if t[3] == "EC-0007"}
         self.assertEqual(set(range(1, self.doc.page + 1)), paginas)
+
+
+class DocumentosEmitidos(BaseHistoriaPDF):
+    """Órdenes de exámenes e infiltraciones en la historia (contrato 2.1 §7)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.generar(DATOS_2_1)
+
+    def test_las_dos_secciones_salen_con_su_titulo(self):
+        self.assertIn("ÓRDENES DE EXÁMENES", self.texto)
+        self.assertIn("REGISTROS DE INFILTRACIONES", self.texto)
+
+    def test_van_despues_de_las_consultas(self):
+        """Son lo que salió de la historia, no la historia."""
+        for titulo in ("ÓRDENES DE EXÁMENES", "REGISTROS DE INFILTRACIONES"):
+            pag_con, y_con = self.y_de("CONSULTAS")
+            pag_doc, y_doc = self.y_de(titulo)
+            self.assertGreaterEqual(pag_doc, pag_con, titulo)
+            if pag_doc == pag_con:
+                self.assertGreater(y_doc, y_con, titulo)
+
+    def test_cada_orden_sale_con_su_fecha_y_cuantos_analisis(self):
+        self.assertIn("6 análisis", self.asiento("14/08/2026"))
+        self.assertIn("1 análisis", self.asiento("09/05/2026"))
+
+    def test_la_orden_corta_lista_todos_sus_analisis(self):
+        self.assertIn("Examen de orina (uroanálisis)",
+                      self.asiento("09/05/2026"))
+
+    def test_la_orden_larga_lista_los_primeros_y_dice_cuantos_faltan(self):
+        """Cuatro nombres y «y 2 más»: para leerla entera está su PDF."""
+        asiento = self.asiento("14/08/2026")
+        for esperado in ("Hematología completa", "Glicemia en ayunas",
+                         "Perfil lipídico completo", "TSH"):
+            self.assertIn(esperado, asiento)
+        self.assertIn("y 2 más", asiento)
+        self.assertNotIn("Creatinina", asiento)
+        self.assertNotIn("Urea", asiento)
+
+    def test_la_orden_anulada_sale_marcada_y_no_escondida(self):
+        asiento = self.asiento("02/04/2026")
+        self.assertIn("ANULADA", asiento)
+        self.assertIn("Amilasa", asiento, "la orden anulada se lista igual")
+
+    def test_las_ordenes_vigentes_no_llevan_marca(self):
+        for fecha in ("14/08/2026", "09/05/2026"):
+            self.assertNotIn("ANULAD", self.asiento(fecha), fecha)
+
+    def test_la_infiltracion_dice_sobre_que_lamina_y_cuantos_puntos(self):
+        asiento = self.asiento("18/07/2026")
+        self.assertIn("Lámina femenina, vista frontal", asiento)
+        self.assertIn(f"{len(PUNTOS)} puntos", asiento)
+
+    def test_los_totales_son_los_mismos_que_los_del_pdf_de_infiltraciones(self):
+        """No se recalculan acá: salen de `totales_por_producto` (§7).
+
+        Es lo que hace que la historia y el registro firmado digan el mismo
+        número. El punto sin dosis está justamente para que una cuenta hecha a
+        mano en este módulo se note: sumaría un punto que no se infiltró.
+        """
+        _, indice = pdf_infiltraciones.normalizar_productos(PRODUCTOS)
+        puntos = pdf_infiltraciones.normalizar_puntos(PUNTOS, indice, {})
+        totales = pdf_infiltraciones.totales_por_producto(puntos)
+        self.assertEqual(2, len(totales), "el fixture tiene dos productos")
+
+        asiento = self.asiento("18/07/2026")
+        for total in totales:
+            producto = total["producto"]
+            dosis = pdf_infiltraciones.formatear_dosis(total["dosis"])
+            esperado = f"{producto['nombre']}: {dosis} {producto['unidad']}"
+            self.assertIn(esperado.strip(), asiento)
+        # y son los del papel: 4 + 4 + 6 U de toxina, 0,5 ml de relleno
+        self.assertIn("Toxina A — marca 1: 14 U", asiento)
+        self.assertIn("Ácido hialurónico: 0,5 ml", asiento)
+
+    def test_acepta_los_analisis_como_texto_separado_por_comas(self):
+        """Es la forma que arma `rutas._json_examen` para la pantalla."""
+        self.generar(dict(DATOS, examenes=[
+            {"fecha_emision": "2026-08-14", "anulado": 0,
+             "analisis": "Hematología completa, Urea"}]))
+        asiento = self.asiento("14/08/2026")
+        self.assertIn("2 análisis", asiento)
+        self.assertIn("Hematología completa, Urea", asiento)
+
+    def test_acepta_filas_de_sqlite(self):
+        con = sqlite3.connect(":memory:")
+        self.addCleanup(con.close)
+        con.row_factory = sqlite3.Row
+        con.execute("CREATE TABLE e (fecha_emision TEXT, anulado INTEGER, "
+                    "analisis TEXT)")
+        con.execute("INSERT INTO e VALUES ('2026-08-14', 0, 'Urea, TSH')")
+        self.generar(dict(DATOS,
+                          examenes=list(con.execute("SELECT * FROM e"))))
+        self.assertIn("Urea, TSH", self.asiento("14/08/2026"))
+
+    def test_nada_se_pasa_de_la_guia_derecha(self):
+        for _, x, _, texto, estilo, pt in self.doc.trazos:
+            fin = x + self.doc._ancho(texto, estilo, pt)
+            self.assertLessEqual(round(fin, 2), pdf_comun.GUIA_DER_MM + 0.01,
+                                 f"«{texto}» se pasa de la guía derecha")
+
+    def test_ningun_renglon_pisa_el_pie(self):
+        for _, _, y, texto, _, _ in self.doc.trazos:
+            if texto.startswith(("Página ", "Historia impresa")):
+                continue
+            self.assertLessEqual(y, pdf_comun.CUERPO_Y1_MM, texto)
+
+
+class SinDocumentosEmitidosNoHayTitulos(BaseHistoriaPDF):
+    """Sin órdenes ni infiltraciones, la historia sale como salía en la 2.0.
+
+    Es la mitad del encargo que no se ve: un paciente que nunca pidió un
+    análisis no puede empezar a gastar dos rótulos y una hoja por una función
+    que no usa.
+    """
+
+    TITULOS = ("ÓRDENES DE EXÁMENES", "REGISTROS DE INFILTRACIONES")
+
+    def test_sin_las_claves_no_se_imprime_ningun_titulo(self):
+        self.generar()
+        for titulo in self.TITULOS:
+            self.assertNotIn(titulo, self.texto)
+
+    def test_con_las_listas_vacias_tampoco(self):
+        self.generar(dict(DATOS, examenes=[], infiltraciones=[]))
+        for titulo in self.TITULOS:
+            self.assertNotIn(titulo, self.texto)
+
+    def test_con_none_tampoco(self):
+        self.generar(dict(DATOS, examenes=None, infiltraciones=None))
+        for titulo in self.TITULOS:
+            self.assertNotIn(titulo, self.texto)
+
+    def test_una_seccion_sale_sin_la_otra(self):
+        """Tener infiltraciones no obliga a imprimir un rótulo de órdenes."""
+        self.generar(dict(DATOS, examenes=[], infiltraciones=INFILTRACIONES))
+        self.assertNotIn("ÓRDENES DE EXÁMENES", self.texto)
+        self.assertIn("REGISTROS DE INFILTRACIONES", self.texto)
+
+    def test_no_gasta_ni_una_hoja_de_mas(self):
+        self.generar(dict(DATOS, examenes=[], infiltraciones=[]))
+        vacias = self.doc.page
+        self.generar()
+        self.assertEqual(self.doc.page, vacias)
+        self.assertEqual(2, vacias,
+                         "la historia de ejemplo entraba en dos hojas antes "
+                         "de la 2.1 y tiene que seguir entrando")
+
+    def test_la_historia_recien_empezada_sigue_en_una_carilla(self):
+        self.generar({"codigo": "EC-0001", "fecha": "2026-08-18",
+                      "paciente": {"nombre": "Juan Pérez"},
+                      "examenes": [], "infiltraciones": []})
+        self.assertEqual(1, self.doc.page)
+        for titulo in self.TITULOS:
+            self.assertNotIn(titulo, self.texto)
+
+
+class DocumentosEmitidosRaros(BaseHistoriaPDF):
+    """Filas viejas o a medio llenar: la historia se imprime igual.
+
+    Es una impresión de todo lo que hay: nada de lo que llegue de la base
+    puede dejar al médico sin poder imprimirla.
+    """
+
+    def test_una_vista_desconocida_no_rompe_la_historia(self):
+        self.generar(dict(DATOS, infiltraciones=[
+            {"fecha": "2026-07-18", "vista": "perfil-derecho", "anulado": 0,
+             "productos": [], "puntos": []}]))
+        self.assertIn("perfil-derecho", self.asiento("18/07/2026"))
+        self.assertIn("0 puntos", self.asiento("18/07/2026"))
+
+    def test_un_solo_punto_va_en_singular(self):
+        self.generar(dict(DATOS, infiltraciones=[
+            {"fecha": "2026-07-18", "vista": "mujer-frontal", "anulado": 0,
+             "productos": PRODUCTOS, "puntos": PUNTOS[:1]}]))
+        self.assertIn("1 punto ", self.asiento("18/07/2026") + " ")
+
+    def test_una_infiltracion_anulada_sale_marcada(self):
+        self.generar(dict(DATOS, infiltraciones=[
+            dict(INFILTRACIONES[0], anulado=1)]))
+        self.assertIn("ANULADO", self.asiento("18/07/2026"))
+
+    def test_una_orden_sin_fecha_se_lista_igual(self):
+        self.generar(dict(DATOS, examenes=[
+            {"fecha_emision": "", "anulado": 0, "analisis": ["Urea"]}]))
+        self.assertIn("Sin fecha", self.texto)
+        self.assertIn("Urea", self.asiento("Sin fecha"))
+
+    def test_una_orden_sin_analisis_cae_en_la_cantidad_de_renglones(self):
+        """`_json_examen` trae `cantidad_items` aunque no traiga los nombres."""
+        self.generar(dict(DATOS, examenes=[
+            {"fecha_emision": "2026-08-14", "anulado": 0,
+             "analisis": "", "cantidad_items": 3}]))
+        self.assertIn("3 análisis", self.asiento("14/08/2026"))
+
+    def test_los_analisis_tambien_pueden_venir_como_items(self):
+        """La forma del dict de entrada de `pdf_examenes` (contrato §3)."""
+        self.generar(dict(DATOS, examenes=[
+            {"fecha_emision": "2026-08-14", "anulado": 0, "items": [
+                {"examen": "Urea", "muestra": "Sangre"},
+                {"examen": "Creatinina", "muestra": "Sangre"}]}]))
+        asiento = self.asiento("14/08/2026")
+        self.assertIn("2 análisis", asiento)
+        self.assertIn("Urea, Creatinina", asiento)
+
+    def test_las_filas_vacias_se_saltean_sin_dejar_el_titulo_colgado(self):
+        self.generar(dict(DATOS, examenes=[None, {}], infiltraciones=[None]))
+        self.assertNotIn("ÓRDENES DE EXÁMENES", self.texto)
+        self.assertNotIn("REGISTROS DE INFILTRACIONES", self.texto)
+
+
+class LosTitulosNoQuedanSolosAlPie(unittest.TestCase):
+    """El rótulo de una sección de documentos no se queda sin su primer asiento.
+
+    Mismo barrido milímetro a milímetro que el de las consultas, y por lo
+    mismo: la ventana en la que el título entra y su renglón no medía dos
+    milímetros y no se encuentra alargando el texto de arriba.
+    """
+
+    def setUp(self) -> None:
+        gestor = warnings.catch_warnings()
+        gestor.__enter__()
+        self.addCleanup(gestor.__exit__, None, None, None)
+        warnings.filterwarnings("ignore", category=ResourceWarning)
+        self.doc = _Espia(pdf_comun.RUTA_LOGO_DEFECTO,
+                          pdf_comun.DIR_FUENTES_DEFECTO, "EC-0007")
+
+    def _barrer(self, seccion, titulo, filas):
+        for hueco in range(8, 45):
+            self.doc.nueva_pagina()
+            self.doc.pluma_y = pdf_comun.CUERPO_Y1_MM - hueco
+            seccion(self.doc, filas)
+        cabeceras = [t for t in self.doc.trazos if t[3] == titulo]
+        self.assertTrue(cabeceras, f"no se imprimió «{titulo}»")
+        for pagina, _, y, _, _, _ in cabeceras:
+            debajo = [t for t in self.doc.trazos if t[0] == pagina and t[2] > y]
+            self.assertTrue(debajo,
+                            f"«{titulo}» quedó solo al pie de la página {pagina}")
+
+    def test_ordenes_de_examenes(self):
+        self._barrer(pdf_historia._examenes, "ÓRDENES DE EXÁMENES", EXAMENES)
+
+    def test_registros_de_infiltraciones(self):
+        self._barrer(pdf_historia._infiltraciones,
+                     "REGISTROS DE INFILTRACIONES", INFILTRACIONES)
 
 
 class LaFechaDeLaConsultaNoQuedaSola(unittest.TestCase):

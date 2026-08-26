@@ -36,6 +36,13 @@ clinica.pdf`, Parte A del analisis), con sus rotulos y respetando lo que tacho:
     los signos vitales de la consulta.
   * CONSULTAS — de la mas nueva a la mas vieja, que es como se lee una
     historia: primero que paso la ultima vez.
+  * ORDENES DE EXAMENES y REGISTROS DE INFILTRACIONES — lo que se EMITIO
+    (contrato 2.1 §7). Van al final y despues de las consultas porque no son
+    la historia: son los documentos que salieron de ella. Cada uno entra en un
+    renglon —fecha, cuanto y de que— y no en una ficha propia: el detalle vive
+    en su PDF, que esta guardado en la carpeta del paciente. Los anulados se
+    listan MARCADOS, nunca escondidos: que una orden se haya anulado es parte
+    de lo que paso (mismo criterio que el Historial y que `excel.py`).
 
 **Solo se imprime lo que tiene contenido.** Una historia recien empezada sale
 en una carilla en vez de en cuatro paginas de rotulos vacios; un formulario
@@ -67,9 +74,10 @@ from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
 
 try:  # como paquete (``from app import pdf_historia``)
-    from . import pdf_comun
+    from . import pdf_comun, pdf_infiltraciones
 except ImportError:  # ejecutado con ``app/`` en el sys.path (tests, scripts)
     import pdf_comun  # type: ignore[no-redef]
+    import pdf_infiltraciones  # type: ignore[no-redef]
 
 # Atajos a lo compartido (ver la nota de `pdf_informe` sobre por que no se usa
 # `from pdf_comun import ...`).
@@ -207,6 +215,29 @@ SEPARACION_GRAFICOS_MM = 8.0     # canaleta entre las dos columnas
 SEPARACION_FILA_GRAFICOS_MM = 5.0
 
 
+# -----------------------------------------------------------------------------
+# Lo que se emitió: órdenes de exámenes e infiltraciones (contrato 2.1 §7)
+# -----------------------------------------------------------------------------
+
+#: Cuántos nombres de análisis se escriben antes de resumir con «y N más».
+#: Con cuatro nombres del catálogo (unos 25 caracteres cada uno) el renglón
+#: ocupa dos líneas y todavía se lee de un vistazo; con seis se convierte en un
+#: párrafo, y para leer la orden entera está su PDF, que es el documento.
+MAX_ANALISIS_LISTADOS = 4
+
+#: Cómo se nombra impresa cada lámina de `pdf_infiltraciones.LAMINAS`. El
+#: identificador de la columna `vista` (`mujer-frontal`) es de la base, no del
+#: papel: en una historia clínica se lee «Lámina femenina, vista frontal».
+LAMINAS_ROTULO = {
+    "mujer-frontal": "Lámina femenina, vista frontal",
+    "hombre-frontal": "Lámina masculina, vista frontal",
+}
+
+#: Separador entre los datos de un renglón emitido. El mismo interpunto que
+#: usa la alimentación, con un solo espacio: acá los tramos son largos.
+SEPARADOR_RENGLON = " · "
+
+
 # =============================================================================
 # 3. AYUDAS
 # =============================================================================
@@ -321,6 +352,94 @@ def _series_evolucion(datos: Mapping[str, Any]) -> list[tuple[str, list, int]]:
         if len(puntos) >= MINIMO_PUNTOS_GRAFICO:
             series.append((titulo, puntos, decimales))
     return series
+
+
+def _filas(bruta: Any) -> list[dict[str, Any]]:
+    """Las filas de una lista de `sqlite3.Row` o de dicts, sin las vacías."""
+    filas = [_dic(cruda) for cruda in bruta or ()]
+    return [fila for fila in filas if fila]
+
+
+def _analisis_de(examen: Mapping[str, Any]) -> list[str]:
+    """Los nombres de los análisis de una orden, sin importar cómo llegaron.
+
+    Se aceptan las tres formas en que la orden circula por la aplicación, para
+    que quien llame no tenga que traducir nada:
+
+      * `analisis` como **lista** — lo que devuelve
+        `basedatos.analisis_por_examen` para cada `examen_id`;
+      * `analisis` como **texto separado por comas** — lo que arma
+        `rutas._json_examen` para el historial y la pantalla;
+      * `items` con un dict por renglón — la forma del dict de entrada de
+        `pdf_examenes.generar_examenes` (contrato §3).
+    """
+    bruto: Any = examen.get("analisis")
+    if bruto is None:
+        bruto = [_dic(item).get("examen") for item in examen.get("items") or ()]
+    crudos: Iterable[Any] = bruto.split(",") if isinstance(bruto, str) else bruto
+    return [nombre for nombre in (str(n or "").strip() for n in crudos or ())
+            if nombre]
+
+
+def _resumen_analisis(nombres: Sequence[str]) -> str:
+    """`Hematología completa, Urea, TSH, VDRL y 3 más`."""
+    if len(nombres) <= MAX_ANALISIS_LISTADOS:
+        return ", ".join(nombres)
+    faltan = len(nombres) - MAX_ANALISIS_LISTADOS
+    return f"{', '.join(nombres[:MAX_ANALISIS_LISTADOS])} y {faltan} más"
+
+
+def _entero(valor: Any) -> int:
+    try:
+        return int(valor or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _lamina(vista: Any) -> str:
+    """El nombre impreso de la lámina. Una vista desconocida no rompe nada.
+
+    A propósito NO se usa `pdf_infiltraciones.normalizar_vista`, que levanta
+    `VistaDesconocidaError`: la historia clínica es una impresión de todo lo
+    que hay y no puede quedarse sin salir porque una fila vieja traiga una
+    vista que ya no está en el catálogo de láminas.
+    """
+    clave = str(vista or "").strip().lower()
+    return LAMINAS_ROTULO.get(clave) or clave or "Lámina sin identificar"
+
+
+def _totales_infiltracion(registro: Mapping[str, Any]
+                          ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """`(puntos numerados, totales por producto)` de una sesión de mapeo.
+
+    Los totales **no se recalculan acá**: se piden a
+    `pdf_infiltraciones.totales_por_producto`, que es el mismo que imprime el
+    PDF del registro. Si alguna vez cambia el criterio —hoy un punto sin
+    producto o con dosis cero no suma— la historia lo hereda sola, y las dos
+    hojas siguen diciendo el mismo número, que es lo único que importa cuando
+    el médico las compara.
+
+    Para eso hay que resolver antes el `productoId` de cada punto, y se hace
+    con las mismas dos funciones que usa `generar_infiltraciones`, sin índice
+    de plantillas: acá no se dibuja la lámina, así que la región de cada punto
+    da igual y `zona`/`lado` ya vienen en la fila.
+    """
+    _, indice = pdf_infiltraciones.normalizar_productos(registro.get("productos"))
+    puntos = pdf_infiltraciones.normalizar_puntos(registro.get("puntos"),
+                                                   indice, {})
+    return puntos, pdf_infiltraciones.totales_por_producto(puntos)
+
+
+def _resumen_productos(totales: Sequence[Mapping[str, Any]]) -> str:
+    """`Toxina A — marca 1: 24 U · Ácido hialurónico: 1,5 ml`."""
+    partes = []
+    for total in totales:
+        producto = _dic(total.get("producto"))
+        nombre = str(producto.get("nombre") or "").strip() or "Producto"
+        dosis = pdf_infiltraciones.formatear_dosis(total.get("dosis") or 0)
+        unidad = str(producto.get("unidad") or "").strip()
+        partes.append(f"{nombre}: {dosis} {unidad}".strip())
+    return SEPARADOR_RENGLON.join(partes)
 
 
 # =============================================================================
@@ -554,6 +673,83 @@ def _consultas(doc: _Historia, consultas: Sequence[Mapping[str, Any]]) -> None:
         doc.campos(consulta, CONSULTA_TEXTOS)
 
 
+#: Lo que hay que reservar para que el título de una sección de documentos no
+#: quede solo al pie: el filete y su aire (`seccion`) más los dos renglones que
+#: mide el primer asiento cuando su resumen se parte en dos líneas.
+RESERVA_SECCION_MM = (INTERLINEA_MM * 2.6 + SEPARACION_SECCION_MM
+                      + INTERLINEA_MM * 2)
+
+
+def _asiento(doc: _Historia, fecha: Any, partes: Sequence[str],
+             anulado: Any, marca: str) -> None:
+    """Un documento emitido en un renglón: «14/08/2026: … · … · …».
+
+    La marca de anulación va **primera**, antes de la fecha y de todo lo
+    demás. Un renglón que termina en «ANULADA» se lee entero antes de saber
+    que no vale; uno que empieza con la marca, no. Es el mismo criterio con el
+    que las alergias suben al principio de la hoja: lo que cambia cómo se lee
+    el resto va antes que el resto.
+    """
+    escritas = [str(parte).strip() for parte in partes if str(parte).strip()]
+    if anulado:
+        escritas.insert(0, marca)
+    if not escritas:
+        return
+    rotulo = pdf_comun.formatear_fecha(fecha) or "Sin fecha"
+    doc.campo(f"{rotulo}:", SEPARADOR_RENGLON.join(escritas),
+              sangria=SANGRIA_MM)
+
+
+def _examenes(doc: _Historia, examenes: Any) -> None:
+    """Las órdenes de análisis del paciente (contrato 2.1 §7).
+
+    Sin ninguna orden no se imprime **nada**, ni el título: mismo criterio que
+    los antecedentes vacíos y que la sección EVOLUCIÓN. Un rótulo «ÓRDENES DE
+    EXÁMENES» seguido de blanco se lee como que la aplicación las perdió.
+    """
+    filas = _filas(examenes)
+    if not filas:
+        return
+    doc.asegurar(RESERVA_SECCION_MM)
+    doc.seccion("ÓRDENES DE EXÁMENES")
+    for examen in filas:
+        nombres = _analisis_de(examen)
+        cantidad = len(nombres) or _entero(examen.get("cantidad_items"))
+        partes = []
+        if cantidad:
+            # «análisis» es igual en singular y en plural: no hay que elegir.
+            partes.append(f"{cantidad} análisis")
+        partes.append(_resumen_analisis(nombres))
+        _asiento(doc, examen.get("fecha_emision"), partes,
+                 examen.get("anulado"), "ANULADA")
+
+
+def _infiltraciones(doc: _Historia, registros: Any) -> None:
+    """Los registros de infiltraciones del paciente (contrato 2.1 §7).
+
+    De cada sesión salen la lámina sobre la que se marcó, cuántos puntos se
+    infiltraron y el total por producto. El total es el mismo que imprime el
+    PDF del registro porque sale de la misma función (ver
+    `_totales_infiltracion`); el mapa, las zonas y las notas de cada punto
+    viven en ese PDF, que está guardado en la carpeta del paciente.
+    """
+    filas = _filas(registros)
+    if not filas:
+        return
+    doc.asegurar(RESERVA_SECCION_MM)
+    doc.seccion("REGISTROS DE INFILTRACIONES")
+    for registro in filas:
+        puntos, totales = _totales_infiltracion(registro)
+        cantidad = len(puntos)
+        partes = [
+            _lamina(registro.get("vista")),
+            "1 punto" if cantidad == 1 else f"{cantidad} puntos",
+            _resumen_productos(totales),
+        ]
+        _asiento(doc, registro.get("fecha"), partes,
+                 registro.get("anulado"), "ANULADO")
+
+
 # =============================================================================
 # 6. API PUBLICA
 # =============================================================================
@@ -586,6 +782,20 @@ def generar_historia(datos: Mapping[str, Any], ruta_salida: str, *,
                            o más mediciones sale como un mini-gráfico en la
                            sección EVOLUCIÓN; si ninguna llega a dos, la
                            sección entera no aparece
+        examenes     list  OPCIONAL. Las órdenes de exámenes del paciente, de
+                           la más nueva a la más vieja (contrato 2.1 §7). De
+                           cada una se leen `fecha_emision`, `anulado` y los
+                           nombres de los análisis, que pueden venir en
+                           `analisis` como lista —lo que devuelve
+                           `basedatos.analisis_por_examen`—, en `analisis`
+                           como texto separado por comas —lo que arma
+                           `rutas._json_examen`— o en `items`. Sin órdenes, la
+                           sección entera no aparece
+        infiltraciones list OPCIONAL. Los registros de infiltraciones, de la
+                           más nueva a la más vieja, tal como los devuelve
+                           `basedatos.infiltracion_a_dict`: `fecha`, `vista`,
+                           `anulado` y `productos`/`puntos` ya parseados. Sin
+                           registros, la sección entera no aparece
         fecha        str   la fecha de impresión que va al pie; si falta, hoy
 
     Acepta `sqlite3.Row` en lugar de dict en `paciente`, `historia` y en cada
@@ -610,6 +820,10 @@ def generar_historia(datos: Mapping[str, Any], ruta_salida: str, *,
     _antecedentes(doc, historia)
     _evolucion(doc, _series_evolucion(datos))
     _consultas(doc, consultas)
+    # Los documentos emitidos van al final y en este orden: primero lo que se
+    # pidió (las órdenes), después lo que se hizo (las infiltraciones).
+    _examenes(doc, datos.get("examenes"))
+    _infiltraciones(doc, datos.get("infiltraciones"))
     doc.pie_impresion(cuando)
     doc.numerar_paginas()
 
@@ -707,6 +921,34 @@ if __name__ == "__main__":  # pragma: no cover
              "plan": "Perfil lipídico, glicemia, TSH.",
              "ta_sistolica": 140, "ta_diastolica": 90, "fc": 84, "peso": 80.1,
              "talla": 1.58, "imc": 32.1},
+        ],
+        "examenes": [
+            {"fecha_emision": "2026-08-18", "anulado": 0, "analisis": [
+                "Perfil lipídico completo", "Glicemia en ayunas",
+                "Hemoglobina glicosilada (HbA1c)", "TSH", "Creatinina",
+                "TGO (AST)", "TGP (ALT)"]},
+            {"fecha_emision": "2026-06-07", "anulado": 1,
+             "analisis": ["Hematología completa", "Urea"]},
+        ],
+        "infiltraciones": [
+            {"fecha": "2026-07-18", "vista": "mujer-frontal", "anulado": 0,
+             "productos": [
+                 {"id": "p1", "nombre": "Toxina A — marca 1", "unidad": "U",
+                  "color": "#D92B2B"},
+                 {"id": "p2", "nombre": "Ácido hialurónico", "unidad": "ml",
+                  "color": "#157F6F"}],
+             "puntos": [
+                 {"orden": 1, "x": 0.42, "y": 0.23, "lado": "I",
+                  "zona": "Frontal — línea media medial", "productoId": "p1",
+                  "dosis": 4},
+                 {"orden": 2, "x": 0.58, "y": 0.23, "lado": "D",
+                  "zona": "Frontal — línea media medial", "productoId": "p1",
+                  "dosis": 4},
+                 {"orden": 3, "x": 0.50, "y": 0.31, "lado": "C",
+                  "zona": "Glabela — prócer", "productoId": "p1", "dosis": 6},
+                 {"orden": 4, "x": 0.38, "y": 0.55, "lado": "I",
+                  "zona": "Surco nasogeniano", "productoId": "p2",
+                  "dosis": 0.5}]},
         ],
     }
 

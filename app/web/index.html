@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Récipes — Espacio Corporal</title>
 <link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="examenes.css">
+<link rel="stylesheet" href="infiltraciones.css">
 </head>
 <body>
 
@@ -22,6 +24,10 @@
             aria-selected="true" aria-controls="panel-historia" data-panel="panel-historia">Historia clínica</button>
     <button type="button" class="pestana" role="tab" id="tab-nuevo"
             aria-selected="false" aria-controls="panel-nuevo" data-panel="panel-nuevo">Nuevo récipe</button>
+    <button type="button" class="pestana" role="tab" id="tab-examenes"
+            aria-selected="false" aria-controls="panel-examenes" data-panel="panel-examenes">Exámenes</button>
+    <button type="button" class="pestana" role="tab" id="tab-infiltraciones"
+            aria-selected="false" aria-controls="panel-infiltraciones" data-panel="panel-infiltraciones">Infiltraciones</button>
     <button type="button" class="pestana" role="tab" id="tab-historial"
             aria-selected="false" aria-controls="panel-historial" data-panel="panel-historial">Récipes emitidos</button>
     <button type="button" class="pestana" role="tab" id="tab-config"
@@ -900,7 +906,46 @@
           </p>
         </section>
 
-        <!-- ── 7 · Evolución (dec. 13) ── -->
+        <!-- ── 7 · Órdenes de exámenes y mapas de infiltraciones (2.1, §7) ──
+             Van después de Informes y antes de Evolución por el mismo motivo
+             por el que Informes va donde va: son cosas que se EMITEN, y el
+             médico las mira cuando ya recorrió la ficha, la consulta y los
+             anexos. No se emiten desde acá —para eso están sus pestañas— pero
+             sí se ven y se reimprimen, que es lo que se busca cuando se abre
+             la historia de alguien: qué le pedí y qué le hice.
+        -->
+        <section class="bloque bloque-config" id="hc-examenes" aria-labelledby="hc-t-examenes">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-examenes">Órdenes de exámenes</h2>
+            <button type="button" class="boton-principal" id="hc-nueva-orden">
+              + Nueva orden
+            </button>
+          </div>
+          <p class="nota-config">Las órdenes que le pediste a este paciente. Se
+            vuelven a imprimir tal cual salieron.</p>
+          <div class="lista-informes" id="hc-lista-examenes"></div>
+          <p class="tabla-vacia" id="hc-examenes-vacio" hidden>
+            Todavía no hay órdenes de exámenes de este paciente. Tocá «Nueva orden».
+          </p>
+        </section>
+
+        <section class="bloque bloque-config" id="hc-infiltraciones" aria-labelledby="hc-t-infiltraciones">
+          <div class="titulo-fila">
+            <h2 class="titulo-config" id="hc-t-infiltraciones">Mapas de infiltraciones</h2>
+            <button type="button" class="boton-principal" id="hc-nuevo-mapa">
+              + Nuevo mapa
+            </button>
+          </div>
+          <p class="nota-config">Los registros de infiltraciones de este paciente.
+            Se abren para reimprimirlos o para corregirlos desde la pestaña
+            «Infiltraciones».</p>
+          <div class="lista-informes" id="hc-lista-infiltraciones"></div>
+          <p class="tabla-vacia" id="hc-infiltraciones-vacio" hidden>
+            Todavía no hay mapas de infiltraciones de este paciente. Tocá «Nuevo mapa».
+          </p>
+        </section>
+
+        <!-- ── 8 · Evolución (dec. 13) ── -->
         <section class="bloque bloque-config" aria-labelledby="hc-t-evolucion">
           <h2 class="titulo-config" id="hc-t-evolucion">Evolución</h2>
           <p class="nota-config leyenda-evolucion">
@@ -924,7 +969,585 @@
     </div>
   </section>
 
-  <!-- ══════════ PANEL C · RÉCIPES EMITIDOS ══════════ -->
+  <!-- ══════════ PANEL C · EXÁMENES ══════════
+       Orden de análisis de laboratorio. Misma hoja que el récipe —carta
+       apaisada, dos mitades, línea de corte—: la izquierda («Solicito:») es la
+       que se entrega en el laboratorio y la derecha («Ind.») la preparación
+       que lee el paciente. La lógica vive en `examenes.js` y los estilos
+       propios en `examenes.css`. -->
+  <section class="panel" id="panel-examenes" role="tabpanel" aria-labelledby="tab-examenes" hidden>
+  <div class="trabajo">
+
+    <!-- ── Columna izquierda: el formulario ── -->
+    <div class="columna-form" id="ex-columna-form">
+
+      <!-- Con una historia abierta, la orden arranca con ESE paciente puesto.
+           La banda es la evidencia: nunca en silencio (dec. 18). -->
+      <div class="banda-paciente" id="ex-banda" hidden>
+        <p class="banda-paciente-texto" id="ex-banda-texto"></p>
+        <button type="button" class="boton-secundario" id="ex-banda-cambiar">Cambiar de paciente</button>
+      </div>
+
+      <div class="exito" id="ex-exito" role="status" hidden>
+        <p class="exito-codigo" id="ex-exito-codigo">EC-0000</p>
+        <p class="exito-texto" id="ex-exito-texto">Orden guardada. Se abrió para imprimir.</p>
+        <button type="button" class="boton-secundario" id="ex-cerrar-exito">Entendido</button>
+      </div>
+
+      <div class="error-global" id="ex-error" role="alert" hidden></div>
+
+      <!-- ── Paciente ── -->
+      <fieldset class="bloque">
+        <legend class="bloque-titulo">Paciente</legend>
+
+        <div class="fila fila-paciente">
+          <div class="campo campo-ancho">
+            <label for="ex-pac-nombre">Nombre y apellido</label>
+            <div class="caja-sugerible">
+              <input type="text" id="ex-pac-nombre" class="entrada" autocomplete="off"
+                     spellcheck="false" role="combobox" aria-expanded="false"
+                     aria-autocomplete="list" aria-controls="ex-lista-pac-nombre"
+                     placeholder="Escribí el nombre">
+              <ul class="sugerencias" id="ex-lista-pac-nombre" role="listbox" hidden></ul>
+            </div>
+            <p class="hint">Si el paciente no existe, se crea con lo que escribas. Para
+              abrirle la historia entrá por «Historia clínica».</p>
+          </div>
+
+          <div class="campo campo-cedula">
+            <label for="ex-pac-cedula">Cédula</label>
+            <input type="text" id="ex-pac-cedula" class="entrada" autocomplete="off"
+                   spellcheck="false" placeholder="Puede quedar vacía">
+          </div>
+
+          <div class="campo campo-edad">
+            <label for="ex-pac-edad">Edad</label>
+            <input type="text" id="ex-pac-edad" class="entrada" autocomplete="off"
+                   inputmode="numeric" spellcheck="false" placeholder="Años">
+          </div>
+        </div>
+
+        <p class="hint hint-paciente" id="ex-hint-paciente" hidden></p>
+      </fieldset>
+
+      <!-- ── Diagnóstico ── -->
+      <fieldset class="bloque">
+        <legend class="bloque-titulo">Diagnóstico</legend>
+        <div class="campo">
+          <label for="ex-diagnostico">Diagnóstico</label>
+          <div class="caja-sugerible">
+            <input type="text" id="ex-diagnostico" class="entrada" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="ex-lista-diagnostico" placeholder="Escribí el diagnóstico">
+            <ul class="sugerencias" id="ex-lista-diagnostico" role="listbox" hidden></ul>
+          </div>
+          <p class="hint">Se guarda en el historial, no sale impreso en la orden.</p>
+        </div>
+      </fieldset>
+
+      <!-- ── Análisis pedidos ── -->
+      <fieldset class="bloque">
+        <legend class="bloque-titulo">Análisis</legend>
+        <p class="hint">El catálogo es un punto de partida, no una lista cerrada:
+          <strong>podés escribir cualquier análisis que no figure</strong> y se emite igual.
+          Al elegir uno de la lista se completan la muestra y la preparación, y las dos
+          quedan editables.</p>
+
+        <div id="ex-renglones"></div>
+
+        <button type="button" class="boton-secundario boton-agregar" id="ex-btn-agregar">
+          + Agregar análisis
+        </button>
+      </fieldset>
+
+      <!-- ── Análisis frecuentes: la vía rápida, no la única ── -->
+      <fieldset class="bloque">
+        <legend class="bloque-titulo">Análisis frecuentes</legend>
+        <p class="hint">Tildá los que necesites —de uno o de varios grupos— y agregalos
+          todos juntos. Después los corregís renglón por renglón, ahí arriba.</p>
+
+        <p class="hint" id="ex-frecuentes-estado" role="status">Cargando el catálogo de análisis…</p>
+
+        <div class="ex-grupos" id="ex-frecuentes"></div>
+
+        <div class="ex-barra-frecuentes">
+          <button type="button" class="boton-secundario" id="ex-btn-tildados" disabled>
+            Agregar los tildados
+          </button>
+          <button type="button" class="boton-secundario boton-chico" id="ex-btn-destildar" hidden>
+            Destildar todo
+          </button>
+          <p class="ex-cuenta-tildados" id="ex-cuenta-tildados" role="status">
+            No hay ningún análisis tildado.
+          </p>
+        </div>
+      </fieldset>
+
+      <!-- ── Indicaciones generales ── -->
+      <fieldset class="bloque">
+        <legend class="bloque-titulo">Indicaciones generales</legend>
+        <div class="campo">
+          <label for="ex-ind-generales">Indicaciones generales (van al pie de la mitad «Ind.»)</label>
+          <textarea id="ex-ind-generales" class="entrada area" rows="4"
+                    placeholder="Traer los resultados al control del 5 de septiembre…"></textarea>
+        </div>
+      </fieldset>
+
+      <!-- ── Aviso de capacidad ── -->
+      <div class="aviso-capacidad" id="ex-aviso" role="alert" hidden>
+        <p class="aviso-texto" id="ex-aviso-texto">
+          No caben tantos renglones en la hoja. Quitá análisis o acortá las preparaciones.
+        </p>
+      </div>
+
+      <p class="medida" id="ex-medida" role="status" hidden></p>
+
+      <!-- ── Botón único ── -->
+      <div class="zona-guardar">
+        <button type="button" class="boton-principal" id="ex-btn-guardar">Guardar e imprimir</button>
+        <p class="hint hint-guardar">Guarda la orden, genera el PDF y lo abre para imprimir. Si el
+          paciente es nuevo, le asigna su código.</p>
+      </div>
+
+      <!-- ── Órdenes anteriores de este paciente ──
+           Aparece solo si el paciente ya tiene alguna. -->
+      <section class="bloque bloque-config" id="ex-anteriores" hidden
+               aria-labelledby="ex-anteriores-titulo">
+        <h2 class="titulo-config" id="ex-anteriores-titulo">Órdenes emitidas de este paciente</h2>
+        <p class="hint" id="ex-anteriores-estado" role="status" hidden></p>
+        <div class="lista-informes" id="ex-anteriores-lista"></div>
+      </section>
+
+    </div>
+
+    <!-- ── Columna derecha: vista previa ── -->
+    <aside class="columna-previa" aria-label="Vista previa de la orden de exámenes">
+      <div class="previa-encabezado">
+        <h2 class="previa-titulo">Vista previa</h2>
+        <button type="button" class="boton-secundario" id="ex-btn-refrescar">Actualizar vista previa</button>
+      </div>
+      <p class="previa-estado" id="ex-previa-estado" role="status">
+        Escribí el paciente y al menos un análisis para ver la vista previa.
+      </p>
+      <div class="previa-marco" id="ex-previa-marco">
+        <iframe id="ex-previa-iframe" title="Vista previa de la orden de exámenes en PDF" hidden></iframe>
+        <div class="previa-vacia" id="ex-previa-vacia">
+          <p>Acá vas a ver la hoja tal cual sale impresa.</p>
+          <p class="chico">La mitad izquierda («Solicito:») es la que se entrega en el
+            laboratorio; la derecha («Ind.») es la preparación que lee el paciente.</p>
+          <p class="chico">Si el paciente ya está registrado sale su código; si es nuevo,
+            dice <strong id="ex-relleno-codigo">EC-____</strong> hasta que guardes.</p>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Plantilla de un renglón de análisis -->
+  <template id="ex-tpl-renglon">
+    <div class="renglon renglon-examen">
+      <div class="renglon-cabecera">
+        <span class="renglon-numero">Análisis 1</span>
+        <button type="button" class="boton-quitar" data-quitar>Quitar</button>
+      </div>
+
+      <div class="fila fila-analisis">
+        <div class="campo campo-ancho">
+          <label data-para="examen">Análisis</label>
+          <div class="caja-sugerible">
+            <input type="text" class="entrada" data-campo="examen" autocomplete="off"
+                   spellcheck="false" role="combobox" aria-expanded="false"
+                   aria-autocomplete="list" placeholder="Escribí el análisis">
+            <ul class="sugerencias" role="listbox" data-lista="examen" hidden></ul>
+          </div>
+        </div>
+
+        <div class="campo campo-muestra">
+          <label data-para="muestra">Muestra</label>
+          <input type="text" class="entrada" data-campo="muestra" autocomplete="off"
+                 spellcheck="false" placeholder="Sangre">
+        </div>
+      </div>
+
+      <div class="campo">
+        <label data-para="prep">Preparación (sale en la mitad «Ind.»)</label>
+        <textarea class="entrada area area-chica" data-campo="indicaciones" rows="2"
+                  placeholder="Ayuno de 8 a 12 horas."></textarea>
+      </div>
+    </div>
+  </template>
+  </section>
+
+  <!-- ══════════ PANEL D · INFILTRACIONES ══════════
+       El mapa de infiltraciones faciales. El paciente sale de la Historia
+       clínica, la sesión se guarda en la base y el PDF lo arma el servidor.
+       La lógica vive en `infiltraciones.js` y los estilos en `infiltraciones.css`. -->
+  <section class="panel" id="panel-infiltraciones" role="tabpanel" aria-labelledby="tab-infiltraciones" hidden>
+  <div class="inf-envoltorio">
+
+    <!-- ── Cartel: no hay ningún paciente abierto en la Historia clínica ──
+         Sin paciente no se registra nada: el mapa se guarda en SU historia. -->
+    <div class="inf-cartel" id="inf-sin-paciente" hidden>
+      <h2 class="inf-cartel-titulo">Primero abrí la historia de un paciente</h2>
+      <p class="inf-cartel-texto">
+        El mapa de infiltraciones se guarda en la historia clínica del paciente y su PDF
+        va a la carpeta de ese paciente. Por eso no se registra nada hasta que haya una
+        historia abierta.
+      </p>
+      <button type="button" class="inf-boton inf-boton-principal" id="inf-ir-historia">
+        Ir a la Historia clínica
+      </button>
+    </div>
+
+    <!-- ── Cartel: el catálogo se está pidiendo o falló ──
+         El catálogo y las láminas se piden la PRIMERA vez que se abre esta
+         pestaña, no al arrancar la app. -->
+    <div class="inf-cartel" id="inf-cartel-catalogo" hidden>
+      <p class="inf-cartel-texto" id="inf-catalogo-estado">Cargando el catálogo de infiltraciones…</p>
+      <button type="button" class="inf-boton" id="inf-reintentar" hidden>Volver a intentar</button>
+    </div>
+
+    <!-- ── La mesa de trabajo ── -->
+    <div class="inf-mesa" id="inf-mesa" hidden>
+
+      <!-- Banda de paciente, igual que en «Nuevo récipe»: el paciente sale de la
+           Historia clínica y acá se dice cuál es, nunca en silencio. -->
+      <div class="inf-banda" id="inf-banda">
+        <p class="inf-banda-texto" id="inf-banda-texto"></p>
+        <p class="inf-banda-sesion" id="inf-banda-sesion"></p>
+        <button type="button" class="inf-boton" id="inf-banda-cambiar">Cambiar de paciente</button>
+      </div>
+
+      <!-- La historia abierta cambió de paciente y acá quedó un mapa sin guardar. -->
+      <div class="inf-aviso-paciente" id="inf-aviso-paciente" hidden>
+        <p class="inf-aviso-paciente-texto" id="inf-aviso-paciente-texto"></p>
+        <button type="button" class="inf-boton" id="inf-aviso-paciente-cambiar">Cambiar de paciente</button>
+      </div>
+
+      <!-- ── Barra de la sesión ── -->
+      <div class="inf-barra-sesion">
+        <div class="inf-campo">
+          <label for="inf-fecha">Fecha</label>
+          <input type="date" id="inf-fecha" class="inf-control">
+        </div>
+
+        <div class="inf-campo">
+          <label for="inf-vista">Lámina</label>
+          <select id="inf-vista" class="inf-control"></select>
+        </div>
+
+        <div class="inf-campo">
+          <label for="inf-plantilla">Aplicar plantilla</label>
+          <select id="inf-plantilla" class="inf-control"></select>
+        </div>
+
+        <button type="button" class="inf-boton" id="inf-guardar-plantilla"
+                title="Guardar las posiciones actuales como plantilla propia">Guardar plantilla</button>
+
+        <button type="button" class="inf-boton" id="inf-ajustes">Ajustes</button>
+
+        <div class="inf-separador"></div>
+
+        <button type="button" class="inf-boton" id="inf-nueva"
+                title="Empezar un mapa nuevo para este mismo paciente">Sesión nueva</button>
+        <button type="button" class="inf-boton inf-boton-principal" id="inf-guardar">Guardar y generar PDF</button>
+      </div>
+
+      <p class="inf-error" id="inf-error" role="alert" hidden></p>
+      <p class="inf-exito" id="inf-exito" role="status" hidden></p>
+
+      <!-- ── Zona de trabajo: lienzo (izquierda) + tabla (derecha) ── -->
+      <div class="inf-trabajo">
+
+        <!-- ══ LIENZO ══ -->
+        <section class="inf-lienzo" aria-label="Mapa de infiltraciones">
+
+          <div class="inf-barra-lienzo">
+            <button type="button" class="inf-boton" id="inf-deshacer" title="Deshacer el último cambio (Ctrl+Z)">↶ Deshacer</button>
+            <button type="button" class="inf-boton" id="inf-rehacer" title="Rehacer (Ctrl+Mayús+Z)">↷ Rehacer</button>
+            <span class="inf-punto-separador" aria-hidden="true">·</span>
+            <button type="button" class="inf-boton" id="inf-espejo"
+                    title="Duplicar el punto seleccionado al lado opuesto (M)">Espejo</button>
+            <span class="inf-punto-separador" aria-hidden="true">·</span>
+            <button type="button" class="inf-boton" id="inf-zoom-menos" title="Alejar" aria-label="Alejar">−</button>
+            <button type="button" class="inf-boton" id="inf-zoom-mas" title="Acercar" aria-label="Acercar">+</button>
+            <button type="button" class="inf-boton" id="inf-ajustar"
+                    title="Volver a ver la lámina entera, sin zoom">Ajustar</button>
+            <span class="inf-punto-separador" aria-hidden="true">·</span>
+
+            <div class="inf-campo inf-campo-fila">
+              <label for="inf-sel-producto">Producto</label>
+              <select id="inf-sel-producto" class="inf-control"
+                      title="Producto con el que nacen los puntos nuevos"></select>
+            </div>
+
+            <div class="inf-campo inf-campo-fila inf-casilla">
+              <input type="checkbox" id="inf-chk-dosis">
+              <label for="inf-chk-dosis" title="Mostrar la dosis de cada punto sobre el mapa">Dosis en el mapa</label>
+            </div>
+
+            <div class="inf-campo inf-campo-fila">
+              <label for="inf-rng-tam">Tamaño</label>
+              <input type="range" id="inf-rng-tam" min="3" max="26" step="1">
+            </div>
+
+            <div class="inf-campo inf-campo-fila inf-casilla">
+              <input type="checkbox" id="inf-chk-referencia" disabled>
+              <label for="inf-chk-referencia" id="inf-etq-referencia"
+                     title="Dibujar debajo, en gris, la sesión anterior que se haya elegido como referencia">Ver referencia</label>
+            </div>
+          </div>
+
+          <!-- Banda del asistente de calibración (3 clics). Solo visible mientras dura. -->
+          <div class="inf-barra-calibracion" id="inf-barra-calibracion" hidden role="group" aria-label="Calibrar la lámina">
+            <strong id="inf-calib-paso">Paso 1 de 3</strong>
+            <span id="inf-calib-instruccion">Hacé clic en el centro de la pupila izquierda de la lámina.</span>
+            <div class="inf-separador"></div>
+            <button type="button" class="inf-boton" id="inf-calib-repetir">Volver a empezar</button>
+            <button type="button" class="inf-boton" id="inf-calib-cancelar">Cancelar</button>
+            <button type="button" class="inf-boton inf-boton-principal" id="inf-calib-aceptar" disabled>Guardar calibración</button>
+          </div>
+
+          <div class="inf-area-lienzo" id="inf-area-lienzo">
+            <div class="inf-marco" id="inf-marco">
+              <img id="inf-lamina" alt="Lámina anatómica de la vista seleccionada">
+              <svg id="inf-overlay" xmlns="http://www.w3.org/2000/svg" role="application"
+                   aria-label="Marcadores de infiltración. Hacé clic sobre la lámina para agregar un punto.">
+                <g id="inf-capa-zoom">
+                  <g id="inf-capa-referencia"></g>
+                  <g id="inf-capa-puntos"></g>
+                  <g id="inf-capa-calibracion"></g>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          <div class="inf-leyenda" id="inf-leyenda" aria-label="Leyenda de productos"></div>
+        </section>
+
+        <!-- ══ PANEL DERECHO ══ -->
+        <aside class="inf-panel" aria-label="Puntos infiltrados">
+
+          <div class="inf-cabecera-panel">
+            <h2 class="inf-titulo-panel">Puntos infiltrados</h2>
+            <div class="inf-separador"></div>
+            <button type="button" class="inf-boton inf-boton-chico" id="inf-borrar-sin-dosis">Borrar los puntos sin dosis</button>
+          </div>
+
+          <div class="inf-contenedor-tabla" id="inf-contenedor-tabla">
+            <table class="inf-tabla" id="inf-tabla">
+              <thead>
+                <tr>
+                  <th class="inf-col-num" scope="col">N.º</th>
+                  <th class="inf-col-lado" scope="col"
+                      title="Lateralidad del paciente: I = hemifacial izquierdo, D = derecho, C = línea media. Como la lámina es una vista frontal, el lado I del paciente aparece a la derecha de la imagen.">Lado</th>
+                  <th scope="col">Zona</th>
+                  <th class="inf-col-producto" scope="col">Producto</th>
+                  <th class="inf-col-dosis" scope="col">Dosis</th>
+                  <th class="inf-col-notas" scope="col">Notas</th>
+                  <th class="inf-col-borrar" scope="col"><span class="inf-oculto-visual">Borrar</span></th>
+                </tr>
+              </thead>
+              <tbody id="inf-cuerpo-tabla"></tbody>
+            </table>
+            <p class="inf-sin-puntos" id="inf-sin-puntos">
+              Todavía no hay puntos. Hacé clic sobre la lámina para agregar el primero, o aplicá una plantilla.
+            </p>
+          </div>
+
+          <div class="inf-totales">
+            <h3 class="inf-titulo-totales">Totales por producto</h3>
+            <div id="inf-lista-totales"></div>
+            <div class="inf-total-puntos" id="inf-total-puntos"></div>
+          </div>
+
+          <div class="inf-bloque-observaciones">
+            <label for="inf-observaciones">Observaciones</label>
+            <textarea id="inf-observaciones" class="inf-control" rows="2"
+                      placeholder="Anotaciones de la sesión (salen en el PDF)."></textarea>
+          </div>
+
+          <!-- Sesiones anteriores del paciente: reemplazan al «Abrir sesión» del
+               programa suelto y también a la «sesión anterior como referencia». -->
+          <div class="inf-sesiones">
+            <button type="button" class="inf-cabecera-sesiones" id="inf-sesiones-plegar" aria-expanded="false">
+              <span class="inf-flecha" id="inf-sesiones-flecha" aria-hidden="true">▸</span>
+              <span>Sesiones anteriores</span>
+              <span class="inf-cuantos" id="inf-sesiones-cuantas"></span>
+            </button>
+            <div class="inf-sesiones-cuerpo" id="inf-sesiones-cuerpo" hidden>
+              <p class="inf-nota" id="inf-sesiones-estado">Cargando…</p>
+              <ul class="inf-lista-sesiones" id="inf-lista-sesiones"></ul>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ DIÁLOGOS ══════════ -->
+
+  <dialog class="inf-dialogo" id="inf-dlg-confirmar">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera" id="inf-dlg-confirmar-titulo">Confirmar</div>
+      <div class="inf-dlg-cuerpo"><p id="inf-dlg-confirmar-texto"></p></div>
+      <div class="inf-dlg-pie">
+        <button type="submit" class="inf-boton" value="no">Cancelar</button>
+        <button type="submit" class="inf-boton inf-boton-principal" value="si" id="inf-dlg-confirmar-ok">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Aplicar plantilla habiendo ya puntos en el mapa: sustituir o añadir. -->
+  <dialog class="inf-dialogo" id="inf-dlg-plantilla">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera">Aplicar plantilla</div>
+      <div class="inf-dlg-cuerpo">
+        <p id="inf-dlg-plantilla-texto"></p>
+        <p class="inf-nota">«Sustituir» borra los puntos actuales y deja solo los de la plantilla.
+           «Agregar» conserva lo que hay y solo suma los puntos de la plantilla que todavía no estén puestos.
+           En los dos casos las dosis nacen vacías y todo se deshace con Ctrl+Z de una sola vez.</p>
+      </div>
+      <div class="inf-dlg-pie">
+        <button type="submit" class="inf-boton" value="cancelar">Cancelar</button>
+        <button type="submit" class="inf-boton" value="anadir">Agregar</button>
+        <button type="submit" class="inf-boton inf-boton-principal" value="sustituir">Sustituir</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Pedir un texto corto (nombre de una plantilla propia). -->
+  <dialog class="inf-dialogo" id="inf-dlg-texto">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera" id="inf-dlg-texto-titulo">Nombre</div>
+      <div class="inf-dlg-cuerpo">
+        <div class="inf-campo">
+          <label for="inf-dlg-texto-campo" id="inf-dlg-texto-etiqueta">Nombre</label>
+          <input type="text" id="inf-dlg-texto-campo" class="inf-control inf-control-ancho" autocomplete="off" maxlength="60">
+        </div>
+        <p class="inf-nota" id="inf-dlg-texto-nota"></p>
+      </div>
+      <div class="inf-dlg-pie">
+        <!-- Cancelar no es «submit» para que Intro en el campo signifique Aceptar. -->
+        <button type="button" class="inf-boton" data-inf-cerrar="cancelar">Cancelar</button>
+        <button type="submit" class="inf-boton inf-boton-principal" value="aceptar">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- La sesión guardada usa una lámina que este catálogo no tiene. -->
+  <dialog class="inf-dialogo" id="inf-dlg-elegir-vista">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera">Lámina no disponible</div>
+      <div class="inf-dlg-cuerpo">
+        <p id="inf-dlg-vista-texto"></p>
+        <div class="inf-campo">
+          <label for="inf-dlg-vista-sel">Usar esta lámina</label>
+          <select id="inf-dlg-vista-sel" class="inf-control"></select>
+        </div>
+        <p class="inf-nota">Los puntos se conservan tal cual: sus coordenadas son relativas a la lámina (0–1),
+           así que puede que haya que recolocar alguno a mano.</p>
+      </div>
+      <div class="inf-dlg-pie"><button type="submit" class="inf-boton inf-boton-principal" value="aceptar">Continuar</button></div>
+    </form>
+  </dialog>
+
+  <!-- Ajustes de la pestaña: productos, zonas propias, mis plantillas y calibración.
+       Los datos del centro (nombre, dirección, logo, paleta) NO están acá: viven en
+       la pestaña Configuración de la app. -->
+  <dialog class="inf-dialogo inf-dialogo-ancho" id="inf-dlg-ajustes">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera">Ajustes de infiltraciones</div>
+      <div class="inf-dlg-cuerpo inf-dlg-cuerpo-alto">
+
+        <section class="inf-seccion-ajustes">
+          <h3>Productos</h3>
+          <div class="inf-tabla-envoltorio">
+            <table class="inf-tabla-ajustes" id="inf-aj-tabla-productos">
+              <thead>
+                <tr>
+                  <th scope="col">Nombre comercial</th>
+                  <th scope="col" class="inf-aj-col-tipo">Tipo</th>
+                  <th scope="col" class="inf-aj-col-unidad">Unidad</th>
+                  <th scope="col" class="inf-aj-col-color">Color</th>
+                  <th scope="col" class="inf-aj-col-lote">Lote</th>
+                  <th scope="col" class="inf-aj-col-caducidad">Caducidad</th>
+                  <th scope="col" class="inf-aj-col-acciones"><span class="inf-oculto-visual">Quitar</span></th>
+                </tr>
+              </thead>
+              <tbody id="inf-aj-cuerpo-productos"></tbody>
+            </table>
+          </div>
+          <div class="inf-fila-botones">
+            <button type="button" class="inf-boton" id="inf-aj-btn-producto">Agregar producto</button>
+          </div>
+          <p class="inf-nota">La unidad la fija el producto: no se cambia dosis a dosis. El lote y la caducidad
+             son de esta sesión y se imprimen en el PDF. Los productos viajan con la sesión guardada.</p>
+        </section>
+
+        <section class="inf-seccion-ajustes">
+          <h3>Zonas propias</h3>
+          <label for="inf-aj-zonas" class="inf-nota">Una zona por línea. Se suman al catálogo precargado.</label>
+          <textarea id="inf-aj-zonas" class="inf-control" spellcheck="false"></textarea>
+        </section>
+
+        <section class="inf-seccion-ajustes">
+          <h3>Mis plantillas</h3>
+          <ul class="inf-lista-plantillas" id="inf-aj-lista-plantillas"></ul>
+          <div class="inf-fila-botones">
+            <button type="button" class="inf-boton" id="inf-aj-btn-exportar-plantillas">Exportar mis-plantillas.json</button>
+            <button type="button" class="inf-boton" id="inf-aj-btn-importar-plantillas">Importar mis-plantillas.json</button>
+          </div>
+          <p class="inf-nota">Las plantillas propias y las zonas propias viven mientras la app esté abierta.
+             Para conservarlas, exportá el archivo y volvé a importarlo cuando lo necesites.</p>
+        </section>
+
+        <section class="inf-seccion-ajustes">
+          <h3>Lámina</h3>
+          <p class="inf-nota">La calibración marca dónde están las pupilas y la punta del mentón: de ahí salen
+             las posiciones de las plantillas y el eje del espejo. Las dos láminas vienen calibradas de fábrica.</p>
+          <div class="inf-fila-botones">
+            <button type="button" class="inf-boton" id="inf-aj-btn-calibrar">Recalibrar esta lámina</button>
+            <button type="button" class="inf-boton" id="inf-aj-btn-calib-fabrica">Volver a la calibración de fábrica</button>
+          </div>
+        </section>
+
+      </div>
+      <div class="inf-dlg-pie">
+        <button type="button" class="inf-boton" data-inf-cerrar="cancelar">Cancelar</button>
+        <button type="submit" class="inf-boton inf-boton-principal" value="aceptar" id="inf-aj-btn-aceptar">Guardar cambios</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Presentación del asistente de calibración de 3 clics. -->
+  <dialog class="inf-dialogo" id="inf-dlg-calibracion">
+    <form method="dialog">
+      <div class="inf-dlg-cabecera">Calibrar lámina</div>
+      <div class="inf-dlg-cuerpo">
+        <p>Se te van a pedir tres clics sobre la lámina, en este orden:</p>
+        <ol class="inf-lista-pasos">
+          <li>Centro de la <strong>pupila izquierda</strong> (la de la izquierda según se ve la lámina).</li>
+          <li>Centro de la <strong>pupila derecha</strong>.</li>
+          <li><strong>Punta del mentón</strong>.</li>
+        </ol>
+        <p class="inf-nota">Al terminar vas a ver los 35 puntos de referencia dibujados encima; podés arrastrar
+           las tres marcas hasta que encajen y recién ahí guardar.</p>
+      </div>
+      <div class="inf-dlg-pie">
+        <button type="submit" class="inf-boton" value="cancelar">Cancelar</button>
+        <button type="submit" class="inf-boton inf-boton-principal" value="empezar">Empezar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="inf-lista-zonas"></datalist>
+  <input type="file" id="inf-archivo-plantillas" accept="application/json,.json" class="inf-oculto">
+  <div class="inf-aviso" id="inf-aviso" role="status" aria-live="polite" hidden></div>
+  </section>
+
+  <!-- ══════════ PANEL E · RÉCIPES EMITIDOS ══════════ -->
   <section class="panel" id="panel-historial" role="tabpanel" aria-labelledby="tab-historial" hidden>
 
     <div class="trabajo trabajo-historial">
@@ -999,7 +1622,7 @@
     </div>
   </section>
 
-  <!-- ══════════ PANEL D · CONFIGURACIÓN ══════════ -->
+  <!-- ══════════ PANEL F · CONFIGURACIÓN ══════════ -->
   <section class="panel" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
     <div class="columna-config" id="columna-config">
 
@@ -1499,5 +2122,7 @@
 </template>
 
 <script src="app.js"></script>
+<script src="examenes.js"></script>
+<script src="infiltraciones.js"></script>
 </body>
 </html>

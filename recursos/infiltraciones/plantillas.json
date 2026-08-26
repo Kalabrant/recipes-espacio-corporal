@@ -1,0 +1,426 @@
+{
+  "formato": "mapa-infiltraciones/plantillas/v1",
+  "sistemaCoordenadas": {
+    "descripcion": "Coordenadas faciales normalizadas. Origen = punto medio entre pupilas. Unidad = distancia interpupilar (DIP). u = eje horizontal, positivo hacia la derecha de la lámina. Como las láminas son vistas frontales, la mitad derecha de la lámina es el hemifacial IZQUIERDO del paciente: por eso u positiva lleva lado «I» (izquierda del paciente) y u negativa lleva lado «D» (derecha del paciente). v = eje vertical, positivo hacia abajo. Referencias: nasion v=0.00, punta del mentón v=1.667. Los valores están afinados sobre base-hombre.jpeg y base-mujer.jpeg con la calibración de fábrica.",
+    "origen": "punto medio interpupilar",
+    "unidad": "distancia interpupilar",
+    "mentonV": 1.667
+  },
+  "puntos": [
+    {
+      "id": "frontal-alto-i",
+      "zona": "Frontal — línea alta",
+      "lado": "I",
+      "grupo": "frente",
+      "u": 0.4,
+      "v": -0.83
+    },
+    {
+      "id": "frontal-alto-d",
+      "zona": "Frontal — línea alta",
+      "lado": "D",
+      "grupo": "frente",
+      "u": -0.4,
+      "v": -0.83
+    },
+    {
+      "id": "frontal-med-lat-i",
+      "zona": "Frontal — línea media lateral",
+      "lado": "I",
+      "grupo": "frente",
+      "u": 0.58,
+      "v": -0.6
+    },
+    {
+      "id": "frontal-med-lat-d",
+      "zona": "Frontal — línea media lateral",
+      "lado": "D",
+      "grupo": "frente",
+      "u": -0.58,
+      "v": -0.6
+    },
+    {
+      "id": "frontal-med-med-i",
+      "zona": "Frontal — línea media medial",
+      "lado": "I",
+      "grupo": "frente",
+      "u": 0.25,
+      "v": -0.7
+    },
+    {
+      "id": "frontal-med-med-d",
+      "zona": "Frontal — línea media medial",
+      "lado": "D",
+      "grupo": "frente",
+      "u": -0.25,
+      "v": -0.7
+    },
+    {
+      "id": "frontal-bajo-i",
+      "zona": "Frontal — línea baja",
+      "lado": "I",
+      "grupo": "frente",
+      "u": 0.32,
+      "v": -0.5
+    },
+    {
+      "id": "frontal-bajo-d",
+      "zona": "Frontal — línea baja",
+      "lado": "D",
+      "grupo": "frente",
+      "u": -0.32,
+      "v": -0.5
+    },
+    {
+      "id": "procer",
+      "zona": "Glabela — prócer",
+      "lado": "C",
+      "grupo": "glabela",
+      "u": 0.0,
+      "v": -0.19
+    },
+    {
+      "id": "corrugador-i",
+      "zona": "Glabela — corrugador",
+      "lado": "I",
+      "grupo": "glabela",
+      "u": 0.258,
+      "v": -0.26
+    },
+    {
+      "id": "corrugador-d",
+      "zona": "Glabela — corrugador",
+      "lado": "D",
+      "grupo": "glabela",
+      "u": -0.258,
+      "v": -0.26
+    },
+    {
+      "id": "nasion",
+      "zona": "Nasion / radix",
+      "lado": "C",
+      "grupo": "glabela",
+      "u": 0.0,
+      "v": 0.0
+    },
+    {
+      "id": "cola-ceja-1-i",
+      "zona": "Cola de ceja — medial",
+      "lado": "I",
+      "grupo": "cejas",
+      "u": 0.678,
+      "v": -0.229
+    },
+    {
+      "id": "cola-ceja-1-d",
+      "zona": "Cola de ceja — medial",
+      "lado": "D",
+      "grupo": "cejas",
+      "u": -0.678,
+      "v": -0.229
+    },
+    {
+      "id": "cola-ceja-2-i",
+      "zona": "Cola de ceja — media",
+      "lado": "I",
+      "grupo": "cejas",
+      "u": 0.734,
+      "v": -0.211
+    },
+    {
+      "id": "cola-ceja-2-d",
+      "zona": "Cola de ceja — media",
+      "lado": "D",
+      "grupo": "cejas",
+      "u": -0.734,
+      "v": -0.211
+    },
+    {
+      "id": "cola-ceja-3-i",
+      "zona": "Cola de ceja — lateral",
+      "lado": "I",
+      "grupo": "cejas",
+      "u": 0.788,
+      "v": -0.181
+    },
+    {
+      "id": "cola-ceja-3-d",
+      "zona": "Cola de ceja — lateral",
+      "lado": "D",
+      "grupo": "cejas",
+      "u": -0.788,
+      "v": -0.181
+    },
+    {
+      "id": "conejo-i",
+      "zona": "Líneas de conejo (nasal transverso)",
+      "lado": "I",
+      "grupo": "nariz",
+      "u": 0.105,
+      "v": 0.16
+    },
+    {
+      "id": "conejo-d",
+      "zona": "Líneas de conejo (nasal transverso)",
+      "lado": "D",
+      "grupo": "nariz",
+      "u": -0.105,
+      "v": 0.16
+    },
+    {
+      "id": "patas-sup-i",
+      "zona": "Patas de gallo — haz superior",
+      "lado": "I",
+      "grupo": "periocular",
+      "u": 0.783,
+      "v": -0.056
+    },
+    {
+      "id": "patas-sup-d",
+      "zona": "Patas de gallo — haz superior",
+      "lado": "D",
+      "grupo": "periocular",
+      "u": -0.783,
+      "v": -0.056
+    },
+    {
+      "id": "patas-med-i",
+      "zona": "Patas de gallo — haz medio",
+      "lado": "I",
+      "grupo": "periocular",
+      "u": 0.823,
+      "v": 0.054
+    },
+    {
+      "id": "patas-med-d",
+      "zona": "Patas de gallo — haz medio",
+      "lado": "D",
+      "grupo": "periocular",
+      "u": -0.823,
+      "v": 0.054
+    },
+    {
+      "id": "patas-inf-i",
+      "zona": "Patas de gallo — haz inferior",
+      "lado": "I",
+      "grupo": "periocular",
+      "u": 0.79,
+      "v": 0.164
+    },
+    {
+      "id": "patas-inf-d",
+      "zona": "Patas de gallo — haz inferior",
+      "lado": "D",
+      "grupo": "periocular",
+      "u": -0.79,
+      "v": 0.164
+    },
+    {
+      "id": "depresor-septo",
+      "zona": "Depresor del septo nasal",
+      "lado": "C",
+      "grupo": "nariz",
+      "u": 0.0,
+      "v": 0.72
+    },
+    {
+      "id": "llsan-i",
+      "zona": "Elevador del labio superior y del ala de la nariz (sonrisa gingival)",
+      "lado": "I",
+      "grupo": "perioral",
+      "u": 0.24,
+      "v": 0.655
+    },
+    {
+      "id": "llsan-d",
+      "zona": "Elevador del labio superior y del ala de la nariz (sonrisa gingival)",
+      "lado": "D",
+      "grupo": "perioral",
+      "u": -0.24,
+      "v": 0.655
+    },
+    {
+      "id": "masetero-i",
+      "zona": "Masetero",
+      "lado": "I",
+      "grupo": "inferior",
+      "u": 0.714,
+      "v": 1.201
+    },
+    {
+      "id": "masetero-d",
+      "zona": "Masetero",
+      "lado": "D",
+      "grupo": "inferior",
+      "u": -0.714,
+      "v": 1.201
+    },
+    {
+      "id": "prejowl-i",
+      "zona": "Línea mandibular / prejowl",
+      "lado": "I",
+      "grupo": "inferior",
+      "u": 0.411,
+      "v": 1.536
+    },
+    {
+      "id": "prejowl-d",
+      "zona": "Línea mandibular / prejowl",
+      "lado": "D",
+      "grupo": "inferior",
+      "u": -0.411,
+      "v": 1.536
+    },
+    {
+      "id": "mentoniano-i",
+      "zona": "Mentoniano",
+      "lado": "I",
+      "grupo": "inferior",
+      "u": 0.167,
+      "v": 1.516
+    },
+    {
+      "id": "mentoniano-d",
+      "zona": "Mentoniano",
+      "lado": "D",
+      "grupo": "inferior",
+      "u": -0.167,
+      "v": 1.516
+    }
+  ],
+  "plantillas": [
+    {
+      "id": "full-face",
+      "nombre": "Full face (todos los puntos)",
+      "puntos": [
+        "frontal-alto-i",
+        "frontal-alto-d",
+        "frontal-med-lat-i",
+        "frontal-med-lat-d",
+        "frontal-med-med-i",
+        "frontal-med-med-d",
+        "frontal-bajo-i",
+        "frontal-bajo-d",
+        "procer",
+        "corrugador-i",
+        "corrugador-d",
+        "nasion",
+        "cola-ceja-1-i",
+        "cola-ceja-1-d",
+        "cola-ceja-2-i",
+        "cola-ceja-2-d",
+        "cola-ceja-3-i",
+        "cola-ceja-3-d",
+        "conejo-i",
+        "conejo-d",
+        "patas-sup-i",
+        "patas-sup-d",
+        "patas-med-i",
+        "patas-med-d",
+        "patas-inf-i",
+        "patas-inf-d",
+        "depresor-septo",
+        "llsan-i",
+        "llsan-d",
+        "masetero-i",
+        "masetero-d",
+        "prejowl-i",
+        "prejowl-d",
+        "mentoniano-i",
+        "mentoniano-d"
+      ]
+    },
+    {
+      "id": "tercio-superior",
+      "nombre": "Tercio superior completo",
+      "puntos": [
+        "frontal-alto-i",
+        "frontal-alto-d",
+        "frontal-med-lat-i",
+        "frontal-med-lat-d",
+        "frontal-med-med-i",
+        "frontal-med-med-d",
+        "frontal-bajo-i",
+        "frontal-bajo-d",
+        "procer",
+        "corrugador-i",
+        "corrugador-d",
+        "nasion",
+        "cola-ceja-1-i",
+        "cola-ceja-1-d",
+        "cola-ceja-2-i",
+        "cola-ceja-2-d",
+        "cola-ceja-3-i",
+        "cola-ceja-3-d",
+        "conejo-i",
+        "conejo-d",
+        "patas-sup-i",
+        "patas-sup-d",
+        "patas-med-i",
+        "patas-med-d",
+        "patas-inf-i",
+        "patas-inf-d",
+        "depresor-septo"
+      ]
+    },
+    {
+      "id": "tres-areas",
+      "nombre": "Clásico 3 áreas (frente + glabela + patas de gallo)",
+      "puntos": [
+        "frontal-alto-i",
+        "frontal-alto-d",
+        "frontal-med-lat-i",
+        "frontal-med-lat-d",
+        "frontal-med-med-i",
+        "frontal-med-med-d",
+        "frontal-bajo-i",
+        "frontal-bajo-d",
+        "procer",
+        "corrugador-i",
+        "corrugador-d",
+        "nasion",
+        "patas-sup-i",
+        "patas-sup-d",
+        "patas-med-i",
+        "patas-med-d",
+        "patas-inf-i",
+        "patas-inf-d"
+      ]
+    },
+    {
+      "id": "ojos-cejas",
+      "nombre": "Ojos y cejas",
+      "puntos": [
+        "cola-ceja-1-i",
+        "cola-ceja-1-d",
+        "cola-ceja-2-i",
+        "cola-ceja-2-d",
+        "cola-ceja-3-i",
+        "cola-ceja-3-d",
+        "patas-sup-i",
+        "patas-sup-d",
+        "patas-med-i",
+        "patas-med-d",
+        "patas-inf-i",
+        "patas-inf-d"
+      ]
+    },
+    {
+      "id": "tercio-inferior",
+      "nombre": "Tercio inferior y contorno",
+      "puntos": [
+        "conejo-i",
+        "conejo-d",
+        "depresor-septo",
+        "llsan-i",
+        "llsan-d",
+        "masetero-i",
+        "masetero-d",
+        "prejowl-i",
+        "prejowl-d",
+        "mentoniano-i",
+        "mentoniano-d"
+      ]
+    }
+  ]
+}

@@ -46,6 +46,11 @@ datas = [
     (os.path.join(RECURSOS, "logo.png"), "recursos"),        # encabezado del PDF
     (os.path.join(RECURSOS, "firma.png"), "recursos"),       # firma del informe (dec. 9)
     (os.path.join(RECURSOS, "fuentes"), "recursos/fuentes"), # Lato embebida
+    # 2.1: las dos láminas anatómicas del mapa de infiltraciones y el catálogo
+    # de 35 puntos. Van como archivos, no horneadas en base64 adentro del HTML
+    # como en el programa suelto del que salieron: acá la interfaz corre sobre
+    # http://127.0.0.1 y las pide con un <img src> normal.
+    (os.path.join(RECURSOS, "infiltraciones"), "recursos/infiltraciones"),
 ]
 # Perfil de color sRGB de fpdf2: no lo detecta el análisis de imports.
 datas += collect_data_files("fpdf")
@@ -60,7 +65,9 @@ hiddenimports = [
     "app.codigos",
     "app.excel",
     "app.pdf_comun",
+    "app.pdf_examenes",
     "app.pdf_historia",
+    "app.pdf_infiltraciones",
     "app.pdf_informe",
     "app.pdf_recipe",
     "app.respaldo",
@@ -74,11 +81,16 @@ excludes = [
     "fitz_old",
     "tkinter",          # la ventana la pone pywebview
     "tests",            # la suite no se distribuye
+    "test_basedatos_2_1",
     "test_codigos",     # los tests viven al lado de `app/` y comparten pathex:
+    "test_examenes_api",
     "test_excel",       # se nombran uno por uno para que ninguno se cuele
     "test_historia",
+    "test_infiltraciones_api",
     "test_pdf_comun",
+    "test_pdf_examenes",
     "test_pdf_historia",
+    "test_pdf_infiltraciones",
     "test_pdf_informe",
     "test_pdf_recipe",
     "test_respaldo",

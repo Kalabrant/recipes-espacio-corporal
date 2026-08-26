@@ -1,0 +1,152 @@
+/* ============================================================
+   Récipes — Espacio Corporal · Pestaña «Exámenes» (2.1 · §6)
+
+   Solo lo que NO existe en `estilos.css`. Todo el resto —`.panel`,
+   `.trabajo`, `.columna-form`, `.columna-previa`, `.bloque`, `.campo`,
+   `.fila`, `.entrada`, `.renglon`, `.sugerencias`, `.banda-paciente`,
+   `.aviso-capacidad`, `.exito`, `.error-global`, `.previa-*`, los botones—
+   se reutiliza tal cual, para que la pestaña sea indistinguible de
+   «Nuevo récipe».
+
+   Ningún color suelto: todos salen de los tokens de `estilos.css`.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. Renglón de análisis
+   El análisis se lleva el ancho; la muestra es una palabra corta
+   (Sangre / Orina / Heces) y no necesita más. La preparación va
+   debajo, a lo ancho, porque es la que baja a la mitad «Ind.».
+   ------------------------------------------------------------ */
+.fila-analisis { grid-template-columns: minmax(0, 1fr) 220px; }
+
+@media (max-width: 1400px) {
+  .fila-analisis { grid-template-columns: minmax(0, 1fr) 170px; }
+}
+@media (max-width: 1100px) {
+  .fila-analisis { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------
+   2. Vista previa
+   `estilos.css` ata el iframe del récipe por su id (#previa-iframe),
+   así que el de acá necesita su propia regla. Es la misma, con el
+   mismo gris de fondo del marco: `--texto-suave` es exactamente ese
+   valor, así que no hace falta ningún hexadecimal suelto.
+   ------------------------------------------------------------ */
+#ex-previa-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: var(--texto-suave);
+}
+#ex-previa-iframe[hidden] { display: none; }
+
+/* ------------------------------------------------------------
+   3. Panel de análisis frecuentes
+   Son ~75 análisis en 7 grupos: plegados por grupo, con casillas
+   para tildar varios de una. Es la vía rápida; el campo libre del
+   renglón sigue mandando.
+   ------------------------------------------------------------ */
+.ex-grupos {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ex-grupos:empty { margin-top: 0; }
+
+.ex-grupo {
+  background: var(--papel);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+}
+
+.ex-grupo > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--alto-campo);
+  padding: 10px 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--teal);
+  cursor: pointer;
+  border-radius: var(--radio);
+}
+
+.ex-grupo > summary:hover { background: var(--teal-claro); }
+
+.ex-grupo[open] > summary {
+  border-bottom: 1px solid var(--linea-suave);
+  border-radius: var(--radio) var(--radio) 0 0;
+}
+
+/* La cuenta del grupo: además del color, dice el número y la palabra.
+   Ningún dato depende solo del color. */
+.ex-grupo-cuenta {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texto-tenue);
+  white-space: nowrap;
+}
+
+.ex-grupo-cuenta.con-tildados { color: var(--teal); }
+
+.ex-lista-frecuentes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2px 16px;
+  padding: 8px 12px 12px;
+}
+
+/* Va junto a `.casilla` de estilos.css, que ya le da el tamaño de 20 px
+   a la casilla y el `accent-color` teal. Acá solo cambia la caja: los
+   análisis tienen dos renglones (nombre y muestra) y se alinean arriba. */
+.ex-casilla {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 8px;
+  border-radius: var(--radio);
+  font-size: 16px;
+  color: var(--texto);
+}
+
+.ex-casilla:hover { background: var(--teal-claro); }
+
+.ex-casilla input { margin-top: 3px; flex: 0 0 auto; }
+
+.ex-casilla-nombre { display: block; font-weight: 600; }
+
+.ex-casilla-muestra {
+  display: block;
+  font-size: 14px;
+  color: var(--texto-tenue);
+  margin-top: 1px;
+}
+
+.ex-barra-frecuentes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ex-cuenta-tildados {
+  margin: 0;
+  flex: 1 1 200px;
+  font-size: 15px;
+  color: var(--texto-suave);
+}
+
+.ex-cuenta-tildados.con-tildados { font-weight: 700; color: var(--teal); }
+
+/* ------------------------------------------------------------
+   4. Órdenes emitidas de este paciente
+   La lista reusa `.lista-informes` y `.informe` de estilos.css; acá
+   solo se separa del botón de guardar, que queda justo encima.
+   ------------------------------------------------------------ */
+#ex-anteriores { margin-top: 18px; }

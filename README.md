@@ -1,6 +1,6 @@
 # Récipes — Espacio Corporal
 
-Programa para emitir récipes médicos de Espacio Corporal. Funciona sin internet y tus datos quedan solo en tu computadora.
+Programa de consultorio de Espacio Corporal: historia clínica, récipes, informes, **órdenes de exámenes** y **mapa de infiltraciones faciales**. Funciona sin internet y tus datos quedan solo en tu computadora.
 
 ---
 
@@ -34,6 +34,26 @@ Programa para emitir récipes médicos de Espacio Corporal. Funciona sin interne
 
 ---
 
+## Órdenes de exámenes
+
+La pestaña **Exámenes** se usa igual que el récipe y sale en la misma hoja: la mitad izquierda, **«Solicito:»**, es la que entregás en el laboratorio, y la derecha, **«Ind.»**, la que se lleva el paciente con la preparación de cada estudio.
+
+- El programa trae **75 análisis cargados**, agrupados como los pensás: Hematología, Química sanguínea, Hormonas, Orina y heces, Inmunología y serología, Marcadores y Estudios. Los tildás de la lista y se agregan de una, con su tipo de muestra y su preparación ya puestas (*«Ayuno de 8 a 12 horas»*, *«Primera orina de la mañana, chorro medio»*…).
+- **La lista no te limita.** Si pedís algo que no está, lo escribís y sale igual; el programa lo aprende y la próxima vez te lo sugiere. Y si una preparación tuya es distinta, la corregís en el renglón: manda lo que vos escribas.
+- Con la historia del paciente abierta, la orden arranca con esa persona ya puesta, y abajo ves las órdenes que ya le emitiste, con su botón para reimprimirlas.
+
+## Mapa de infiltraciones
+
+La pestaña **Infiltraciones** reemplaza la lámina de papel: marcás **en qué puntos exactos** infiltraste, con qué producto y qué dosis, y sale un PDF para la historia clínica.
+
+- Elegís la lámina (hombre o mujer), aplicás una de tus **plantillas** —«Full face» son los 35 puntos— y ajustás solo lo que cambia en ese paciente. **Todas las dosis nacen vacías**: el programa nunca sugiere ni calcula una dosis, solo anota la que vos ponés.
+- Hacés clic para agregar un punto, lo arrastrás para moverlo, `Supr` lo borra, la tecla `M` hace el simétrico del otro lado, y `Ctrl+Z` deshace (aplicar una plantilla entera se deshace de un solo golpe).
+- A la derecha, la tabla se llena sola, agrupada por región y con el subtotal de cada una y el total por producto siempre a la vista.
+- **Guardar y generar PDF** guarda el mapa en la historia del paciente y abre el PDF: la lámina con los puntos numerados, la leyenda de productos con su lote, la tabla por regiones y los totales.
+- Los mapas anteriores de ese paciente se listan abajo y **se vuelven a abrir para corregirlos**. Corregir uno no pisa el PDF anterior: se guarda uno nuevo.
+
+---
+
 ## Dónde quedan tus datos
 
 Todo vive en una sola carpeta de tu computadora:
@@ -47,7 +67,7 @@ Adentro hay estas carpetas:
 | Carpeta | Qué hay adentro |
 |---|---|
 | `datos\` | El archivo con **toda la información**: pacientes, medicamentos, récipes emitidos. Es el corazón del programa. |
-| `pacientes\` | Una carpeta por paciente (`EC-0001_APELLIDO-Nombre\`) con `recipes\`, `informes\` y `anexos\` adentro. Ahí cae todo lo nuevo de esa persona. El nombre de la carpeta se escribe una sola vez, cuando el paciente recibe su código: si después corregís cómo se llama, la carpeta no cambia de nombre (la que manda es el código) y todo sigue junto. |
+| `pacientes\` | Una carpeta por paciente (`EC-0001_APELLIDO-Nombre\`) con `recipes\`, `informes\`, `examenes\`, `infiltraciones\` y `anexos\` adentro. Ahí cae todo lo nuevo de esa persona. El nombre de la carpeta se escribe una sola vez, cuando el paciente recibe su código: si después corregís cómo se llama, la carpeta no cambia de nombre (la que manda es el código) y todo sigue junto. |
 | `pdf\` | Los récipes emitidos con las versiones anteriores del programa, ordenados por año. Se quedan donde están y se siguen abriendo e imprimiendo igual desde **Récipes emitidos**. Los récipes nuevos ya no van acá, van a `pacientes\`. |
 | `registro\` | La planilla de Excel con la lista de todos los récipes y todos los medicamentos recetados. Sirve para mirar, buscar y sacar cuentas. |
 | `respaldos\` | Las copias de seguridad automáticas, en archivos `.zip`. Adentro va `datos\`, `registro\` y `pacientes\` entera. |
@@ -103,6 +123,9 @@ Andá a **Récipes emitidos** y buscá por código, por nombre del paciente, por
 
 **Emití un récipe con un error.**
 No se borra: se **anula**, desde **Récipes emitidos**, escribiendo el motivo. Queda tachado en la lista y anotado como anulado en el registro. Después emitís el récipe corregido: sale con el mismo código, porque el código es del paciente y lo llevan todos sus récipes; lo que los distingue es la fecha.
+
+**¿Dónde quedan las órdenes de exámenes y los mapas de infiltraciones?**
+En la carpeta del paciente, al lado de sus récipes: `Documentos\Recipes\pacientes\EC-0001_APELLIDO-Nombre\`, en las subcarpetas `examenes\` e `infiltraciones\`. También los ves listados en la historia del paciente y salen impresos en el PDF de la historia clínica.
 
 **El programa no abre / se cierra solo.**
 Reiniciá la computadora y probá de nuevo. Si sigue igual, desinstalá el programa e instalá otra vez el `Setup.exe`: **no vas a perder ningún récipe**, porque tus datos están en `Documentos\Recipes` y el instalador no los toca.
