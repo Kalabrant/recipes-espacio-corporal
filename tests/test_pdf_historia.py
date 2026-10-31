@@ -42,7 +42,7 @@ import pdf_infiltraciones  # noqa: E402
 
 PACIENTE = {
     "nombre": "María Fernanda Rodríguez Blanco",
-    "cedula": "V-7856151",
+    "cedula": "V-11222333",
     "fecha_nacimiento": "1966-03-12",
     "edad": 60,
     "sexo": "Femenino",
@@ -308,7 +308,7 @@ class HistoriaCompleta(BaseHistoriaPDF):
         self.assertIn("EC-0007", self.texto)
 
     def test_la_ficha_trae_lo_que_quedo_del_papel(self):
-        for esperado in ("María Fernanda Rodríguez Blanco", "V-7856151",
+        for esperado in ("María Fernanda Rodríguez Blanco", "V-11222333",
                          "12/03/1966", "60 años", "Femenino", "O+",
                          "Casada", "Docente universitaria"):
             self.assertIn(esperado, self.texto)

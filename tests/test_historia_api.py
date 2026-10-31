@@ -105,7 +105,7 @@ class BaseHistoriaApi(unittest.TestCase):
         con = self.conexion()
         try:
             self.paciente_id = basedatos.crear_paciente(
-                con, "María González", cedula="V-7856151", edad=47, sexo="F")
+                con, "María González", cedula="V-11222333", edad=47, sexo="F")
             con.commit()
         finally:
             con.close()
@@ -240,7 +240,7 @@ class TestAltaDePaciente(BaseHistoriaApi):
 
     def test_alta_repetida_por_cedula_devuelve_el_mismo_sin_duplicar(self):
         """El nombre escrito distinto no crea una segunda María González."""
-        respuesta = self.alta(nombre="Maria Gonzalez R.", cedula="V-7856151")
+        respuesta = self.alta(nombre="Maria Gonzalez R.", cedula="V-11222333")
         self.assertEqual(200, respuesta.status_code, respuesta.get_json())
         cuerpo = respuesta.get_json()
 
@@ -262,7 +262,7 @@ class TestAltaDePaciente(BaseHistoriaApi):
 
     def test_la_repetida_completa_lo_que_faltaba_y_no_pisa_lo_que_habia(self):
         """El médico carga de a poco; corregir es un acto explícito de la ficha."""
-        self.alta(nombre="María González", cedula="V-7856151",
+        self.alta(nombre="María González", cedula="V-11222333",
                   edad=99, telefono="0261-7000000")
         guardado = self.pacientes()[0]
         self.assertEqual(47, guardado["edad"], "la edad que ya estaba no se pisa")
@@ -271,7 +271,7 @@ class TestAltaDePaciente(BaseHistoriaApi):
 
     def test_una_alta_repetida_no_quema_un_codigo(self):
         """Dec. 1: el correlativo es de por vida; no se saltean números."""
-        self.alta(nombre="María González", cedula="V-7856151")
+        self.alta(nombre="María González", cedula="V-11222333")
         primera = self.alta(**self.NUEVO)
         self.assertEqual("EC-0002", primera.get_json()["codigo"])
         segunda = self.alta(nombre="Ana Rojas")

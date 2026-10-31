@@ -853,8 +853,8 @@ if __name__ == "__main__":  # pragma: no cover
         "codigo": "EC-0001",
         "fecha": "2026-08-18",
         "paciente": {
-            "nombre": "Mónica Galué",
-            "cedula": "7856151",
+            "nombre": "María Pérez",
+            "cedula": "11222333",
             "fecha_nacimiento": "1966-03-12",
             "edad": 60,
             "sexo": "F",

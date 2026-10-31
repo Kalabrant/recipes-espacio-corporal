@@ -34,7 +34,7 @@ class BaseHistoria(unittest.TestCase):
         self.carpeta = Path(tempfile.mkdtemp(prefix="recipes_historia_"))
         self.con = basedatos.inicializar(self.carpeta / "recipes.db")
         self.paciente_id = basedatos.crear_paciente(
-            self.con, "María González", cedula="V-7856151", edad=47, sexo="F"
+            self.con, "María González", cedula="V-11222333", edad=47, sexo="F"
         )
 
     def tearDown(self) -> None:

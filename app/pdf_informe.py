@@ -416,7 +416,7 @@ def _cuerpo_clinico(doc: _Informe, datos: Mapping[str, Any]) -> None:
     nombre = _t(datos, "paciente_nombre")
     cedula = _t(datos, "paciente_cedula")
     if nombre or cedula:
-        # El ejemplo real dice «Mónica  Galue , C.I. 7856151»: los espacios de
+        # El ejemplo real dice «María  Perez , C.I. 11222333»: los espacios de
         # más son tipeo del `.docx`, no un rótulo que haya que respetar.
         linea = nombre + (f", C.I. {cedula}" if cedula else "")
         doc.parrafo(linea, estilo="B", pt=PT_CUERPO, color=GRIS_DATO)
@@ -606,8 +606,8 @@ if __name__ == "__main__":  # pragma: no cover
         "tipo": "clinico",
         "codigo": "EC-0001",
         "fecha": "2026-08-18",
-        "paciente_nombre": "Mónica Galué",
-        "paciente_cedula": "7856151",
+        "paciente_nombre": "María Pérez",
+        "paciente_cedula": "11222333",
         "cuerpo": frase_inicial("F", 60, "aumento de peso progresivo",
                                 "dislipidemia y trastornos del sueño"),
         "diagnostico": "Dislipidemia",

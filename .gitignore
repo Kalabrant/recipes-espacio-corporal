@@ -16,3 +16,7 @@ datos/
 *.db
 *.db-wal
 *.db-shm
+
+# Imagenes reales de pacientes: nunca al repositorio
+WhatsApp Image*
+/Historia clínica.pdf

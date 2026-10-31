@@ -567,7 +567,7 @@ INFORME MEDICO                                    (12 pt, negrita)
 └──────────────────────────────┴─────────────────────────────────┘
 
   {{paciente_nombre}} , C.I. {{paciente_cedula}}
-      → literal del ejemplo: "Mónica  Galue , C.I. 7856151"
+      → literal del ejemplo: "María  Perez , C.I. 11222333"
 
   {{cuerpo_del_informe}}
       → literal: "Se trata de paciente femenino de 60 años de edad, quien
@@ -768,9 +768,9 @@ Es el **informe de composición corporal generado por la app de una báscula de 
 **Identificación**
 | Campo | Valor |
 |---|---|
-| Nombre | Luciana |
+| Nombre | (nombre de la paciente) |
 | Sexo | Femenino (ícono ♀ rosado) |
-| Fecha y hora de la medición | **14/08/2026 13:41:08** |
+| Fecha y hora de la medición | **(fecha omitida)** |
 | Edad | 27 años |
 | Altura | 168 cm |
 
@@ -944,7 +944,7 @@ Dentro de la pantalla de la historia del paciente, un panel plegable: **"Imágen
 
 Filtra imágenes (`.jpg .jpeg .png .webp`) modificadas en los **últimos 30 días**, y muestra **miniaturas** ordenadas de más nueva a más vieja, con la fecha del archivo debajo. Debajo de cada una, un botón **"Anexar a esta historia"**.
 
-Las miniaturas son la clave: el médico **ve** el informe azul de Luciana y hace clic. No lee nombres de archivo, no navega carpetas, no cambia hábitos. Elimina de un saque el riesgo de anexar la imagen equivocada, que es el peor contra de (b).
+Las miniaturas son la clave: el médico **ve** el informe azul de (nombre de la paciente) y hace clic. No lee nombres de archivo, no navega carpetas, no cambia hábitos. Elimina de un saque el riesgo de anexar la imagen equivocada, que es el peor contra de (b).
 
 Las que ya anexó (por hash SHA-256) dejan de aparecer, así que la bandeja se va vaciando sola sin borrar nada del disco.
 
@@ -980,7 +980,7 @@ Con el código ahora **por paciente**, la estructura natural es:
 ```
 %USERPROFILE%\Documents\Recipes\
   pacientes\
-    EC-2026-0001_Luciana-Perez\
+    EC-2026-0001_Paciente-Prueba\
       anexos\
         2026-08-14_medicion_01.jpg
         2026-08-14_medicion_01.thumb.jpg     ← miniatura 400px, generada
@@ -1031,7 +1031,7 @@ Sí, pero **como anexo al final y opt-in por documento**, no incrustada en medio
 11. ¿Querés que el PDF reproduzca la **advertencia legal** de la báscula ("no son dispositivos médicos") junto al anexo, o preferís que no aparezca?
 
 **Sobre los datos**
-12. ¿Vas a anexar imágenes con **nombre y datos de otro paciente** visibles (como esta, que dice "Luciana")? Si el nombre en la imagen no coincide con el paciente de la historia, ¿querés que la app te avise o que no se meta?
+12. ¿Vas a anexar imágenes con **nombre y datos de otro paciente** visibles (como esta, que dice "(nombre de la paciente)")? Si el nombre en la imagen no coincide con el paciente de la historia, ¿querés que la app te avise o que no se meta?
 13. ¿La carpeta `Documents\Recipes` está sincronizada con OneDrive? Con imágenes esa carpeta va a crecer bastante y quiero saber si eso te trae problemas de espacio o de sincronización.
 
 ---

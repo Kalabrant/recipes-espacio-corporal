@@ -50,8 +50,8 @@ CLINICO = dict(MEDICO, **{
     "tipo": "clinico",
     "codigo": "EC-0001",
     "fecha": "2026-08-18",
-    "paciente_nombre": "Mónica Galué",
-    "paciente_cedula": "7856151",
+    "paciente_nombre": "María Pérez",
+    "paciente_cedula": "11222333",
     "cuerpo": ("Se trata de paciente femenino de 60 años de edad, quien "
                "consulta por presentar aumento de peso progresivo con "
                "antecedentes de dislipidemia y trastornos del sueño."),
@@ -165,7 +165,7 @@ class InformeClinico(BaseInforme):
             self.assertIn(esperado, self.texto)
 
     def test_paciente_con_su_cedula(self):
-        self.assertIn("Mónica Galué, C.I. 7856151", self.texto)
+        self.assertIn("María Pérez, C.I. 11222333", self.texto)
 
     def test_cuerpo_diagnostico_y_tratamiento(self):
         self.assertIn("Se trata de paciente femenino de 60 años", self.texto)

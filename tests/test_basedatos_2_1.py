@@ -60,7 +60,7 @@ class BaseDatos21(unittest.TestCase):
         self.carpeta = Path(tempfile.mkdtemp(prefix="recipes_2_1_"))
         self.con = basedatos.inicializar(self.carpeta / "recipes.db")
         self.paciente_id = basedatos.crear_paciente(
-            self.con, "María Fernanda Rodríguez", cedula="V-7856151", edad=38, sexo="F"
+            self.con, "María Fernanda Rodríguez", cedula="V-11222333", edad=38, sexo="F"
         )
         self.codigo = basedatos.obtener_paciente(self.con, self.paciente_id)["codigo"]
 
